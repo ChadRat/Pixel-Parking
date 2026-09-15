@@ -1,0 +1,7 @@
+{
+  "name": "Pixel Parking",
+  "description": "Google Pixel inspired intelligent car parking locator with Car Bluetooth auto-save, simplified directional navigation arrow, OLED pitch black theme, perimeter geofences, and Wear OS companion sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

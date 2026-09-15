@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Outer Soft Glow Shadow in Sky Blue -->
+    <path
+        android:pathData="M54,26 C41.85,26 32,35.85 32,48 C32,63.5 54,82 54,82 C54,82 76,63.5 76,48 C76,35.85 66.15,26 54,26 Z"
+        android:fillColor="#E8F0FE" />
+
+    <!-- Google Blue Fluid Outer Pin / Droplet Base Layer -->
+    <path
+        android:pathData="M54,27 C42.5,27 33,36.5 33,48 C33,62.8 54,81 54,81 C54,81 75,62.8 75,48 C75,36.5 65.5,27 54,27 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="33"
+                android:startY="27"
+                android:endX="75"
+                android:endY="81"
+                android:type="linear">
+                <item android:color="#4285F4" android:offset="0.0" />
+                <item android:color="#1A73E8" android:offset="0.55" />
+                <item android:color="#185ABC" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Translucent Modern Curved Accent Overlay (Material 3 layered depth) -->
+    <path
+        android:pathData="M54,27 C65.5,27 75,36.5 75,48 C75,62.8 54,81 54,81 C54,81 60,65 60,52 C60,38 54,27 54,27 Z"
+        android:fillColor="#8AB4F8"
+        android:fillAlpha="0.45" />
+
+    <!-- Inner Crisp White Contrast Badge -->
+    <path
+        android:pathData="M54,49m-14.5,0a14.5,14.5 0,1 1,29 0a14.5,14.5 0,1 1,-29 0"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Google Deep Blue Parking 'P' with Car Sleek Geometry inside -->
+    <path
+        android:pathData="M48,39 L55,39 C58,39 60.5,41.2 60.5,44 C60.5,46.8 58,49 55,49 L51.5,49 L51.5,59 L48,59 Z M51.5,42.5 L51.5,45.5 L54.8,45.5 C55.9,45.5 56.8,44.8 56.8,44 C56.8,43.2 55.9,42.5 54.8,42.5 Z"
+        android:fillColor="#1A73E8" />
+
+    <!-- Minimalist Google Blue Base Anchor Dot -->
+    <path
+        android:pathData="M54,54.5m-2.2,0a2.2,2.2 0,1 1,4.4 0a2.2,2.2 0,1 1,-4.4 0"
+        android:fillColor="#4285F4" />
+
+</vector>
