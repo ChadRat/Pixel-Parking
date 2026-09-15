@@ -144,7 +144,18 @@ data class AppStrings(
     val clearSpotsSubtitle: String,
     val historyClearedToast: String,
     val aboutSection: String,
-    val appVersion: String
+    val appVersion: String,
+    val sourceCodeGitHub: String,
+    val sourceCodeSubtitle: String,
+    val licenseTitle: String,
+    val licenseSubtitle: String,
+    val viewLicenseTerms: String,
+    val copyButton: String,
+    val gnuOrgButton: String,
+    val aboutTitle: String,
+    val aboutSettingsSubtitle: String,
+    val reportAnIssueTitle: String,
+    val reportAnIssueUrl: String
 )
 
 val EnglishStrings = AppStrings(
@@ -283,7 +294,18 @@ val EnglishStrings = AppStrings(
     clearSpotsSubtitle = "Remove all recorded parking entries",
     historyClearedToast = "Parking history cleared",
     aboutSection = "About Pixel Parking",
-    appVersion = "Version 1.2.0 • Material You"
+    appVersion = "Version 1.2.0 • Material You",
+    sourceCodeGitHub = "Source Code on GitHub",
+    sourceCodeSubtitle = "github.com/ChadRat/Pixel-Parking",
+    licenseTitle = "GNU General Public License v3.0",
+    licenseSubtitle = "GPL-3.0 • Free & Open Source",
+    viewLicenseTerms = "View License",
+    copyButton = "Copy",
+    gnuOrgButton = "GNU.org",
+    aboutTitle = "About",
+    aboutSettingsSubtitle = "Settings",
+    reportAnIssueTitle = "Report an Issue",
+    reportAnIssueUrl = "issues.new"
 )
 
 val GreekStrings = AppStrings(
@@ -422,7 +444,18 @@ val GreekStrings = AppStrings(
     clearSpotsSubtitle = "Διαγραφή όλων των καταγεγραμμένων θέσεων",
     historyClearedToast = "Το ιστορικό στάθμευσης διαγράφηκε",
     aboutSection = "Σχετικά με το Pixel Parking",
-    appVersion = "Έκδοση 1.2.0 • Material You"
+    appVersion = "Έκδοση 1.2.0 • Material You",
+    sourceCodeGitHub = "Πηγαίος Κώδικας στο GitHub",
+    sourceCodeSubtitle = "github.com/ChadRat/Pixel-Parking",
+    licenseTitle = "GNU General Public License v3.0",
+    licenseSubtitle = "GPL-3.0 • Ελεύθερο Λογισμικό",
+    viewLicenseTerms = "Προβολή Άδειας",
+    copyButton = "Αντιγραφή",
+    gnuOrgButton = "GNU.org",
+    aboutTitle = "Σχετικά",
+    aboutSettingsSubtitle = "Ρυθμίσεις",
+    reportAnIssueTitle = "Αναφορά σφάλματος",
+    reportAnIssueUrl = "issues.new"
 )
 
 fun getAppStrings(language: AppLanguage): AppStrings = when (language) {

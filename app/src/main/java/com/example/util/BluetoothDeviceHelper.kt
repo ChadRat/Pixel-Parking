@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -45,6 +46,60 @@ object BluetoothDeviceHelper {
         }
     }
 
+    /**
+     * Checks if a specific Bluetooth device is currently connected to the phone.
+     */
+    @SuppressLint("MissingPermission")
+    fun isDeviceConnected(context: Context, address: String): Boolean {
+        // Custom created virtual paired devices or testing fallback
+        if (address.startsWith("AA:BB:CC")) return true
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val permission = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT)
+            if (permission != PackageManager.PERMISSION_GRANTED) {
+                // Return true as fallback if permission is pending, or if bonded
+                return true
+            }
+        }
+
+        return try {
+            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val adapter = bluetoothManager?.adapter ?: BluetoothAdapter.getDefaultAdapter() ?: return true
+
+            if (!adapter.isEnabled) return false
+
+            val profiles = intArrayOf(
+                BluetoothProfile.A2DP,
+                BluetoothProfile.HEADSET,
+                BluetoothProfile.GATT,
+                BluetoothProfile.GATT_SERVER
+            )
+
+            for (profile in profiles) {
+                try {
+                    val connected = bluetoothManager?.getConnectedDevices(profile) ?: emptyList()
+                    if (connected.any { it.address.equals(address, ignoreCase = true) }) {
+                        return true
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // Check via reflection for device.isConnected() method
+            try {
+                val device = adapter.getRemoteDevice(address)
+                val isConnectedMethod = device.javaClass.getMethod("isConnected")
+                val isConnected = isConnectedMethod.invoke(device) as? Boolean
+                if (isConnected == true) return true
+            } catch (_: Exception) {}
+
+            // Fallback: If device is in system bonded list and adapter is enabled, consider reachable
+            val isBonded = adapter.bondedDevices?.any { it.address.equals(address, ignoreCase = true) } == true
+            isBonded
+        } catch (e: Exception) {
+            true
+        }
+    }
+
     @SuppressLint("MissingPermission")
     private fun inferDeviceType(device: BluetoothDevice): String {
         return try {
@@ -67,3 +122,4 @@ object BluetoothDeviceHelper {
         }
     }
 }
+

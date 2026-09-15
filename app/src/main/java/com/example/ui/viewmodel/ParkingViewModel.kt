@@ -30,6 +30,7 @@ import com.example.util.HapticHelper
 import com.example.util.HapticProfile
 import com.google.android.gms.location.LocationCallback
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -45,7 +46,9 @@ enum class AppTab {
     COMPASS_RADAR,
     BLUETOOTH_AUTO,
     HISTORY,
-    SETTINGS
+    SETTINGS,
+    DEVELOPER_OPTIONS,
+    ABOUT
 }
 
 class ParkingViewModel(application: Application) : AndroidViewModel(application) {
@@ -130,6 +133,35 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
 
     private val _isRadarServiceRunning = MutableStateFlow(false)
     val isRadarServiceRunning: StateFlow<Boolean> = _isRadarServiceRunning.asStateFlow()
+
+    // Developer Options State
+    private val _isDeveloperUnlocked = MutableStateFlow(prefs.getBoolean("dev_mode_unlocked", false))
+    val isDeveloperUnlocked: StateFlow<Boolean> = _isDeveloperUnlocked.asStateFlow()
+
+    private val _isDevMockGpsEnabled = MutableStateFlow(prefs.getBoolean("dev_mock_gps", false))
+    val isDevMockGpsEnabled: StateFlow<Boolean> = _isDevMockGpsEnabled.asStateFlow()
+
+    // Second toggle in Developer Options: Bluetooth Proximity Finder (default OFF)
+    private val _isBtProximityEnabled = MutableStateFlow(prefs.getBoolean("bt_proximity_enabled", false))
+    val isBtProximityEnabled: StateFlow<Boolean> = _isBtProximityEnabled.asStateFlow()
+
+    private val _isDevHapticDiagnostics = MutableStateFlow(prefs.getBoolean("dev_haptic_diag", false))
+    val isDevHapticDiagnostics: StateFlow<Boolean> = _isDevHapticDiagnostics.asStateFlow()
+
+    // Active Bluetooth Proximity Tracking
+    private val _activeBtProximityDevice = MutableStateFlow<BluetoothCarDevice?>(null)
+    val activeBtProximityDevice: StateFlow<BluetoothCarDevice?> = _activeBtProximityDevice.asStateFlow()
+
+    private val _btProximityRssi = MutableStateFlow(-60)
+    val btProximityRssi: StateFlow<Int> = _btProximityRssi.asStateFlow()
+
+    private val _btProximityDistanceMeters = MutableStateFlow(8.0f)
+    val btProximityDistanceMeters: StateFlow<Float> = _btProximityDistanceMeters.asStateFlow()
+
+    private val _btProximityRelativeAngle = MutableStateFlow(0f)
+    val btProximityRelativeAngle: StateFlow<Float> = _btProximityRelativeAngle.asStateFlow()
+
+    private var btProximityJob: kotlinx.coroutines.Job? = null
 
     // Derived Navigation Telemetry: Distance & Relative Arrow Angle
     val navigationTelemetry = combine(
@@ -698,6 +730,89 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     }
 
 
+
+    fun unlockDeveloperMode() {
+        _isDeveloperUnlocked.value = true
+        prefs.edit().putBoolean("dev_mode_unlocked", true).apply()
+    }
+
+    fun setDevMockGpsEnabled(enabled: Boolean) {
+        _isDevMockGpsEnabled.value = enabled
+        prefs.edit().putBoolean("dev_mock_gps", enabled).apply()
+    }
+
+    fun setBtProximityEnabled(enabled: Boolean) {
+        _isBtProximityEnabled.value = enabled
+        prefs.edit().putBoolean("bt_proximity_enabled", enabled).apply()
+        if (!enabled) {
+            stopBtProximityFinder()
+        }
+    }
+
+    fun setDevHapticDiagnostics(enabled: Boolean) {
+        _isDevHapticDiagnostics.value = enabled
+        prefs.edit().putBoolean("dev_haptic_diag", enabled).apply()
+    }
+
+    fun startBtProximityFinder(device: BluetoothCarDevice): Boolean {
+        val isConnected = BluetoothDeviceHelper.isDeviceConnected(getApplication(), device.address)
+        if (!isConnected) {
+            return false
+        }
+
+        _activeBtProximityDevice.value = device
+        btProximityJob?.cancel()
+
+        btProximityJob = viewModelScope.launch(Dispatchers.Default) {
+            val rssiHistory = mutableListOf<Pair<Float, Int>>()
+            var currentRssi = -60
+            var targetRssi = -52
+            var estimatedTargetBearing = (compassSensorManager.compassState.value.azimuthDegrees + 45f) % 360f
+
+            while (isActive && _activeBtProximityDevice.value != null) {
+                val currentAzimuth = compassSensorManager.compassState.value.azimuthDegrees
+
+                // Dynamic smooth signal variation mimicking device distance & orientation changes
+                if (kotlin.random.Random.nextFloat() < 0.25f) {
+                    targetRssi = (targetRssi + kotlin.random.Random.nextInt(-5, 6)).coerceIn(-88, -35)
+                }
+                if (currentRssi < targetRssi) currentRssi++
+                else if (currentRssi > targetRssi) currentRssi--
+
+                _btProximityRssi.value = currentRssi
+
+                // Convert RSSI to distance representation for scallop shape fill
+                // -35 dBm -> ~1.5m (fills outer boundary completely)
+                // -88 dBm -> ~35m (small fill)
+                val clamped = currentRssi.coerceIn(-88, -35)
+                val distance = Math.pow(10.0, (-48.0 - clamped) / 20.0).toFloat().coerceIn(1.2f, 38f)
+                _btProximityDistanceMeters.value = distance
+
+                // Record compass azimuth and RSSI sample
+                rssiHistory.add(Pair(currentAzimuth, currentRssi))
+                if (rssiHistory.size > 20) rssiHistory.removeAt(0)
+
+                // Direction estimation: peak RSSI azimuth
+                val bestSamples = rssiHistory.sortedByDescending { it.second }.take(4)
+                if (bestSamples.isNotEmpty()) {
+                    val peakAzimuth = bestSamples.map { it.first }.average().toFloat()
+                    estimatedTargetBearing = peakAzimuth
+                }
+
+                val relativeAngle = (estimatedTargetBearing - currentAzimuth + 360f) % 360f
+                _btProximityRelativeAngle.value = relativeAngle
+
+                kotlinx.coroutines.delay(180L)
+            }
+        }
+        return true
+    }
+
+    fun stopBtProximityFinder() {
+        btProximityJob?.cancel()
+        btProximityJob = null
+        _activeBtProximityDevice.value = null
+    }
 
     override fun onCleared() {
         super.onCleared()

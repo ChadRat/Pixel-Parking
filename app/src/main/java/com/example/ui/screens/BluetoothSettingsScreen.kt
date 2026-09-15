@@ -3,6 +3,8 @@ package com.example.ui.screens
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.Toast
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -71,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.data.entity.BluetoothCarDevice
+import com.example.ui.viewmodel.AppTab
 import com.example.ui.viewmodel.ParkingViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -146,6 +149,7 @@ fun BluetoothSettingsContent(
 
     val monitoredDevices = devices.filter { it.isMonitoredCar }
     val hasMonitored = monitoredDevices.isNotEmpty()
+    val isBtProximityEnabled by viewModel.isBtProximityEnabled.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -351,6 +355,15 @@ fun BluetoothSettingsContent(
                     GoogleCarBluetoothChoiceItem(
                         device = dev,
                         isMonitored = dev.isMonitoredCar,
+                        isBtProximityEnabled = isBtProximityEnabled,
+                        onStartProximityFinder = { targetDev ->
+                            val success = viewModel.startBtProximityFinder(targetDev)
+                            if (success) {
+                                viewModel.selectTab(AppTab.COMPASS_RADAR)
+                            } else {
+                                Toast.makeText(context, "Device not connected", Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         onToggleMonitor = { isChecked ->
                             viewModel.toggleMonitoredDevice(dev.address, isChecked)
                         },
@@ -441,6 +454,8 @@ fun BluetoothSettingsContent(
 fun GoogleCarBluetoothChoiceItem(
     device: BluetoothCarDevice,
     isMonitored: Boolean,
+    isBtProximityEnabled: Boolean = false,
+    onStartProximityFinder: (BluetoothCarDevice) -> Unit = {},
     onToggleMonitor: (Boolean) -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit
@@ -524,15 +539,38 @@ fun GoogleCarBluetoothChoiceItem(
                     }
                 }
 
-                Switch(
-                    checked = isMonitored,
-                    onCheckedChange = onToggleMonitor,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                        checkedTrackColor = MaterialTheme.colorScheme.primary
-                    ),
-                    modifier = Modifier.testTag("switch_car_bt_${device.address}")
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (isBtProximityEnabled) {
+                        IconButton(
+                            onClick = { onStartProximityFinder(device) },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f))
+                                .testTag("bt_find_device_btn_${device.address}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.BluetoothSearching,
+                                contentDescription = "Find my device",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = isMonitored,
+                        onCheckedChange = onToggleMonitor,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
+                        ),
+                        modifier = Modifier.testTag("switch_car_bt_${device.address}")
+                    )
+                }
             }
 
             // Option to delete custom added device

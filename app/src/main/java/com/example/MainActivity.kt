@@ -107,7 +107,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.i18n.getAppStrings
+import com.example.ui.screens.AboutScreen
 import com.example.ui.screens.BluetoothSettingsScreen
+import com.example.ui.screens.DeveloperOptionsScreen
 import com.example.ui.screens.CompassRadarScreen
 import com.example.ui.screens.HistoryScreen
 import com.example.ui.screens.HomeScreen
@@ -299,7 +301,7 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
     }
 
     val backgroundBlur by animateDpAsState(
-        targetValue = if (selectedTab == AppTab.BLUETOOTH_AUTO) 20.dp else 0.dp,
+        targetValue = if (selectedTab == AppTab.BLUETOOTH_AUTO || selectedTab == AppTab.ABOUT) 20.dp else 0.dp,
         label = "bt_bg_blur"
     )
 
@@ -436,6 +438,20 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
                 viewModel = viewModel,
                 devices = allDevices,
                 onBack = { viewModel.selectTab(AppTab.DASHBOARD) }
+            )
+        }
+
+        if (selectedTab == AppTab.DEVELOPER_OPTIONS) {
+            DeveloperOptionsScreen(
+                viewModel = viewModel,
+                onBack = { viewModel.selectTab(AppTab.DASHBOARD) }
+            )
+        }
+
+        if (selectedTab == AppTab.ABOUT) {
+            AboutScreen(
+                viewModel = viewModel,
+                onBack = { viewModel.selectTab(AppTab.SETTINGS) }
             )
         }
     }

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.EditLocation
@@ -61,6 +62,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -110,6 +114,7 @@ fun HomeScreen(
     val isGpsRefreshing by viewModel.isGpsRefreshing.collectAsState()
 
     var showNewParkDialog by remember { mutableStateOf(false) }
+    var tapTimestamps by remember { mutableStateOf(emptyList<Long>()) }
 
     val backgroundBlur by animateDpAsState(
         targetValue = if (showNewParkDialog) 20.dp else 0.dp,
@@ -138,7 +143,23 @@ fun HomeScreen(
                     text = strings.appName,
                     fontSize = 26.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            val now = System.currentTimeMillis()
+                            val updatedTaps = (tapTimestamps + now).takeLast(10)
+                            tapTimestamps = updatedTaps
+
+                            if (updatedTaps.size >= 10 && (now - updatedTaps.first()) <= 10000L) {
+                                tapTimestamps = emptyList() // Reset timestamps
+                                viewModel.unlockDeveloperMode()
+                                onNavigateTab(AppTab.DEVELOPER_OPTIONS)
+                            }
+                        }
+                        .testTag("pixel_parking_title")
                 )
 
                 // Car BT Quick Pill

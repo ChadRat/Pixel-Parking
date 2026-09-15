@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
@@ -105,9 +106,27 @@ fun CompassRadarScreen(
         }
     }
 
-    val isAligned = telemetry.hasActiveTarget && (abs(telemetry.relativeArrowAngle) < 15f || telemetry.relativeArrowAngle > 345f)
+    val activeBtDevice by viewModel.activeBtProximityDevice.collectAsStateWithLifecycle()
+    val btRssi by viewModel.btProximityRssi.collectAsStateWithLifecycle()
+    val btDistanceMeters by viewModel.btProximityDistanceMeters.collectAsStateWithLifecycle()
+    val btRelativeAngle by viewModel.btProximityRelativeAngle.collectAsStateWithLifecycle()
+
+    val isBtMode = activeBtDevice != null
+
+    val effectiveRelativeArrowAngle = if (isBtMode) btRelativeAngle else telemetry.relativeArrowAngle
+    val effectiveDistanceMeters = if (isBtMode) btDistanceMeters else telemetry.distanceMeters
+    val effectiveHasTarget = if (isBtMode) true else telemetry.hasActiveTarget
+    val effectiveIsAligned = if (isBtMode) {
+        abs(btRelativeAngle) < 20f || btRelativeAngle > 340f
+    } else {
+        telemetry.hasActiveTarget && (abs(telemetry.relativeArrowAngle) < 15f || telemetry.relativeArrowAngle > 345f)
+    }
+
+    val isAligned = effectiveIsAligned
     val localeSep = java.text.DecimalFormatSymbols.getInstance().decimalSeparator
-    val distanceDisplay = when {
+    val distanceDisplay = if (isBtMode) {
+        "${btDistanceMeters.toInt()} ${strings.meters}"
+    } else when {
         activeSpot == null -> "--"
         !telemetry.hasActiveTarget -> {
             if (telemetry.distanceMeters > 0f) "${telemetry.distanceMeters.toInt()} ${strings.meters}" else strings.locating
@@ -141,7 +160,14 @@ fun CompassRadarScreen(
     val isDeviceRenamed = associatedDevice?.isCustomRenamed == true && associatedDevice.name.isNotBlank()
 
     // Dynamic proximity status title matching Google Find My Device UI
-    val proximityStatus = when {
+    val proximityStatus = if (isBtMode) {
+        when {
+            btRssi >= -45 -> strings.carIsHere
+            btRssi >= -60 -> strings.carVeryClose
+            btRssi >= -75 -> strings.walkInThisDirection
+            else -> strings.waypointRadarSubtitle
+        }
+    } else when {
         activeSpot == null -> strings.noSpotsFound
         !telemetry.hasActiveTarget -> strings.locating
         telemetry.distanceMeters <= 3.0f -> strings.carIsHere
@@ -151,13 +177,19 @@ fun CompassRadarScreen(
         else -> strings.waypointRadarSubtitle
     }
 
-    val isCarHereOrVeryClose = telemetry.hasActiveTarget && (
-        telemetry.distanceMeters <= 8.0f ||
-        proximityStatus == strings.carIsHere ||
-        proximityStatus == strings.carVeryClose
-    )
+    val isCarHereOrVeryClose = if (isBtMode) {
+        btRssi >= -60
+    } else {
+        telemetry.hasActiveTarget && (
+            telemetry.distanceMeters <= 8.0f ||
+            proximityStatus == strings.carIsHere ||
+            proximityStatus == strings.carVeryClose
+        )
+    }
 
-    val spotDisplayName = when {
+    val spotDisplayName = if (isBtMode) {
+        activeBtDevice?.name ?: "Bluetooth Device"
+    } else when {
         activeSpot == null -> strings.myParkedCar
         isDeviceRenamed -> associatedDevice.name
         else -> strings.myParkedCar
@@ -270,6 +302,76 @@ fun CompassRadarScreen(
                 }
             }
 
+            // BLUETOOTH PROXIMITY FINDER ACTIVE BANNER
+            AnimatedVisibility(
+                visible = isBtMode,
+                enter = fadeIn() + slideInVertically { -it / 2 },
+                exit = fadeOut() + slideOutVertically { -it / 2 }
+            ) {
+                Surface(
+                    onClick = { viewModel.stopBtProximityFinder() },
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .testTag("bt_proximity_active_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.BluetoothSearching,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                            Column {
+                                Text(
+                                    text = "Finding Bluetooth Device",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = "RSSI Signal Finder Active • Tap to exit",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = { viewModel.stopBtProximityFinder() },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Exit Bluetooth Search",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
             // AUTOMATIC COMPASS CALIBRATION BANNER
             AnimatedVisibility(
                 visible = compassState.needsCalibration,
@@ -338,11 +440,11 @@ fun CompassRadarScreen(
 
             // CENTER FIND MY DEVICE SCALLOPED PROXIMITY BADGE WITH FIXED DIRECTIONAL ARROW
             CompassRadarNeedle(
-                relativeArrowAngle = telemetry.relativeArrowAngle,
+                relativeArrowAngle = effectiveRelativeArrowAngle,
                 compassAzimuth = compassState.azimuthDegrees,
-                distanceMeters = telemetry.distanceMeters,
+                distanceMeters = effectiveDistanceMeters,
                 isAlignedWithTarget = isAligned,
-                hasActiveTarget = telemetry.hasActiveTarget,
+                hasActiveTarget = effectiveHasTarget,
                 modifier = Modifier
                     .fillMaxWidth(0.78f)
                     .aspectRatio(1f)
