@@ -12,7 +12,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -43,9 +47,18 @@ fun CompassRadarNeedle(
     hasActiveTarget: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    // Prevent the 360-degree backflip when crossing the 0-degree boundary
+    var continuousAngle by remember { mutableStateOf(relativeArrowAngle) }
+    
+    LaunchedEffect(relativeArrowAngle) {
+        val diff = (relativeArrowAngle - continuousAngle) % 360f
+        val shortestDiff = (diff + 540f) % 360f - 180f
+        continuousAngle += shortestDiff
+    }
+
     // Smooth rotation animation for the directional arrow
     val animatedAngle by animateFloatAsState(
-        targetValue = relativeArrowAngle,
+        targetValue = continuousAngle,
         animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
         label = "radarArrowAngle"
     )

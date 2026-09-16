@@ -1,52 +1,69 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    
-    <!-- Outer Soft Glow Shadow in Sky Blue -->
-    <path
-        android:pathData="M54,26 C41.85,26 32,35.85 32,48 C32,63.5 54,82 54,82 C54,82 76,63.5 76,48 C76,35.85 66.15,26 54,26 Z"
-        android:fillColor="#E8F0FE" />
 
-    <!-- Google Blue Fluid Outer Pin / Droplet Base Layer -->
-    <path
-        android:pathData="M54,27 C42.5,27 33,36.5 33,48 C33,62.8 54,81 54,81 C54,81 75,62.8 75,48 C75,36.5 65.5,27 54,27 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="33"
-                android:startY="27"
-                android:endX="75"
-                android:endY="81"
-                android:type="linear">
-                <item android:color="#4285F4" android:offset="0.0" />
-                <item android:color="#1A73E8" android:offset="0.55" />
-                <item android:color="#185ABC" android:offset="1.0" />
-            </gradient>
-        </aapt:attr>
-    </path>
+    <!-- Entire pin wrapped in a group to center precisely on the vertical axis (top margin 26.5dp, bottom margin 26.5dp) -->
+    <group android:translateY="0.5">
 
-    <!-- Translucent Modern Curved Accent Overlay (Material 3 layered depth) -->
-    <path
-        android:pathData="M54,27 C65.5,27 75,36.5 75,48 C75,62.8 54,81 54,81 C54,81 60,65 60,52 C60,38 54,27 54,27 Z"
-        android:fillColor="#8AB4F8"
-        android:fillAlpha="0.45" />
+        <!-- Base Pin with straight tangent sides and 5dp corner radius on point (Vibrant Blue) -->
+        <path
+            android:fillColor="#1A73E8"
+            android:pathData="M 36.68,56 
+                              A 20,20 0 1,1 71.32,56 
+                              L 58.33,78.5 
+                              A 5,5 0 0,1 49.67,78.5 
+                              Z" />
 
-    <!-- Inner Crisp White Contrast Badge -->
-    <path
-        android:pathData="M54,49m-14.5,0a14.5,14.5 0,1 1,29 0a14.5,14.5 0,1 1,-29 0"
-        android:fillColor="#FFFFFF" />
+        <!-- Inner Circle (Light Blue) - sits behind the peak -->
+        <path
+            android:fillColor="#669DF6"
+            android:pathData="M 54,33 
+                              A 9,9 0 1,0 54,51 
+                              A 9,9 0 1,0 54,33 Z" />
 
-    <!-- Google Deep Blue Parking 'P' with Car Sleek Geometry inside -->
-    <path
-        android:pathData="M48,39 L55,39 C58,39 60.5,41.2 60.5,44 C60.5,46.8 58,49 55,49 L51.5,49 L51.5,59 L48,59 Z M51.5,42.5 L51.5,45.5 L54.8,45.5 C55.9,45.5 56.8,44.8 56.8,44 C56.8,43.2 55.9,42.5 54.8,42.5 Z"
-        android:fillColor="#1A73E8" />
+        <!-- Highlight Dot (White) -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 58,36.5 
+                              A 2.5,2.5 0 1,0 58,41.5 
+                              A 2.5,2.5 0 1,0 58,36.5 Z" />
 
-    <!-- Minimalist Google Blue Base Anchor Dot -->
-    <path
-        android:pathData="M54,54.5m-2.2,0a2.2,2.2 0,1 1,4.4 0a2.2,2.2 0,1 1,-4.4 0"
-        android:fillColor="#4285F4" />
+        <!-- Bottom Mountain Peak and Road grouped with clip-path matching the mountain & perimeter boundaries -->
+        <group>
+            <clip-path
+                android:pathData="M 36.68,56 
+                                  L 54,46 
+                                  L 71.32,56 
+                                  L 58.33,78.5 
+                                  A 5,5 0 0,1 49.67,78.5 
+                                  Z" />
+
+            <!-- Bottom Mountain Peak / Pointing Shape (Dark Blue) -->
+            <path
+                android:fillColor="#0D47A1"
+                android:pathData="M 36.68,56 
+                                  L 54,46 
+                                  L 71.32,56 
+                                  L 58.33,78.5 
+                                  A 5,5 0 0,1 49.67,78.5 
+                                  Z" />
+
+            <!-- Smooth Distant Zigzag Road (Cleanly cut by left mountain edge and right perimeter) -->
+            <path
+                android:fillColor="#00000000"
+                android:strokeColor="#1565C0"
+                android:strokeWidth="1.4"
+                android:strokeLineCap="butt"
+                android:strokeLineJoin="round"
+                android:pathData="M 42,51 
+                                  C 46.5,51.8 53.5,53.5 53,56.5 
+                                  C 52.5,59.5 46,58.8 46,61.5 
+                                  C 46,64.5 56,65.5 68,67" />
+        </group>
+
+    </group>
 
 </vector>

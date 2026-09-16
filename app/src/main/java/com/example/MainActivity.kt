@@ -73,6 +73,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -105,6 +106,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.absoluteValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.example.ui.components.AnimatedNavIcon
+import com.example.ui.components.ParkingAlarmAlertDialog
+import com.example.ui.components.ParkingTimerDialog
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.i18n.getAppStrings
 import com.example.ui.screens.AboutScreen
@@ -132,6 +136,8 @@ class MainActivity : ComponentActivity() {
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
             val oledMode by viewModel.oledMode.collectAsStateWithLifecycle()
             val dynamicColor by viewModel.dynamicColor.collectAsStateWithLifecycle()
+            val autoSunTheme by viewModel.autoSunTheme.collectAsStateWithLifecycle()
+            val isDaytime by viewModel.isDaytime.collectAsStateWithLifecycle()
             val appLanguage by viewModel.appLanguage.collectAsStateWithLifecycle()
             val strings = remember(appLanguage) { getAppStrings(appLanguage) }
 
@@ -139,7 +145,9 @@ class MainActivity : ComponentActivity() {
                 MyApplicationTheme(
                     themeMode = themeMode,
                     dynamicColor = dynamicColor,
-                    oledMode = oledMode
+                    oledMode = oledMode,
+                    autoSunTheme = autoSunTheme,
+                    isDaytime = isDaytime
                 ) {
                     PixelParkingApp(viewModel)
                 }
@@ -168,6 +176,8 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
     val allDevices by viewModel.allDevices.collectAsStateWithLifecycle()
     val compassState by viewModel.compassState.collectAsStateWithLifecycle()
     val telemetry by viewModel.navigationTelemetry.collectAsStateWithLifecycle()
+    val showTimerDialog by viewModel.showTimerDialog.collectAsStateWithLifecycle()
+    val isAlarmActive by viewModel.isAlarmActive.collectAsStateWithLifecycle()
 
     val coroutineScope = rememberCoroutineScope()
     val mainTabs = remember {
@@ -301,7 +311,7 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
     }
 
     val backgroundBlur by animateDpAsState(
-        targetValue = if (selectedTab == AppTab.BLUETOOTH_AUTO || selectedTab == AppTab.ABOUT) 20.dp else 0.dp,
+        targetValue = if (selectedTab == AppTab.BLUETOOTH_AUTO || selectedTab == AppTab.ABOUT || showTimerDialog) 20.dp else 0.dp,
         label = "bt_bg_blur"
     )
 
@@ -454,6 +464,20 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
                 onBack = { viewModel.selectTab(AppTab.SETTINGS) }
             )
         }
+
+        if (showTimerDialog) {
+            ParkingTimerDialog(
+                viewModel = viewModel,
+                onDismiss = { viewModel.closeParkingTimer() }
+            )
+        }
+
+        if (isAlarmActive) {
+            ParkingAlarmAlertDialog(
+                onDismiss = { viewModel.dismissTimerAlarm() },
+                onSnooze = { viewModel.snoozeTimerAlarm(5) }
+            )
+        }
     }
     }
 
@@ -483,6 +507,25 @@ fun PixelFloatingBottomNavBar(
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val isOled = isDark && MaterialTheme.colorScheme.background == Color(0xFF000000)
 
+    val animTriggerDashboard = remember { mutableIntStateOf(0) }
+    val animTriggerRadar = remember { mutableIntStateOf(0) }
+    val animTriggerHistory = remember { mutableIntStateOf(0) }
+    val animTriggerSettings = remember { mutableIntStateOf(0) }
+
+    var previousTab by remember { mutableStateOf<AppTab?>(null) }
+    LaunchedEffect(selectedTab) {
+        if (previousTab != null && previousTab != selectedTab) {
+            when (selectedTab) {
+                AppTab.DASHBOARD -> animTriggerDashboard.intValue++
+                AppTab.COMPASS_RADAR -> animTriggerRadar.intValue++
+                AppTab.HISTORY -> animTriggerHistory.intValue++
+                AppTab.SETTINGS -> animTriggerSettings.intValue++
+                else -> {}
+            }
+        }
+        previousTab = selectedTab
+    }
+
     val navBarContainerBg = if (isOled) Color(0xFF141414) else MaterialTheme.colorScheme.surfaceContainerHigh
     val navSelectedBg = MaterialTheme.colorScheme.primary
     val navSelectedContent = MaterialTheme.colorScheme.onPrimary
@@ -505,13 +548,20 @@ fun PixelFloatingBottomNavBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Main Pill Capsule Container: Opaque background, smaller height (48.dp)
+            // Main Pill Capsule Container: Opaque background with 3D drop shadow in light & dark mode
             Surface(
                 shape = CircleShape,
                 color = navBarContainerBg,
                 border = navBorder,
-                shadowElevation = 0.dp,
+                shadowElevation = 10.dp,
+                tonalElevation = 2.dp,
                 modifier = Modifier
+                    .shadow(
+                        elevation = 12.dp,
+                        shape = CircleShape,
+                        spotColor = Color.Black.copy(alpha = if (isDark) 0.65f else 0.30f),
+                        ambientColor = Color.Black.copy(alpha = if (isDark) 0.45f else 0.20f)
+                    )
                     .wrapContentWidth()
                     .height(48.dp)
                     .clip(CircleShape)
@@ -556,7 +606,15 @@ fun PixelFloatingBottomNavBar(
                                 .clickable(
                                     interactionSource = interactionSource,
                                     indication = ripple(bounded = true, color = if (isSelected) navSelectedContent else navSelectedBg)
-                                ) { onSelectTab(item.tab) }
+                                ) {
+                                    when (item.tab) {
+                                        AppTab.DASHBOARD -> animTriggerDashboard.intValue++
+                                        AppTab.COMPASS_RADAR -> animTriggerRadar.intValue++
+                                        AppTab.HISTORY -> animTriggerHistory.intValue++
+                                        else -> {}
+                                    }
+                                    onSelectTab(item.tab)
+                                }
                                 .testTag(item.testTag)
                                 .animateContentSize(
                                     animationSpec = spring(
@@ -573,21 +631,32 @@ fun PixelFloatingBottomNavBar(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center
                             ) {
+                                val itemTriggerCount = when (item.tab) {
+                                    AppTab.DASHBOARD -> animTriggerDashboard.intValue
+                                    AppTab.COMPASS_RADAR -> animTriggerRadar.intValue
+                                    AppTab.HISTORY -> animTriggerHistory.intValue
+                                    else -> 0
+                                }
+
                                 if (item.tab == AppTab.COMPASS_RADAR && hasActiveSpot && !isSelected) {
                                     BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.error) }) {
-                                        Icon(
-                                            imageVector = item.unselectedIcon,
+                                        AnimatedNavIcon(
+                                            tab = item.tab,
+                                            icon = item.unselectedIcon,
                                             contentDescription = item.label,
                                             tint = animatedContentColor,
-                                            modifier = Modifier.size(20.dp)
+                                            triggerCount = itemTriggerCount,
+                                            size = 20.dp
                                         )
                                     }
                                 } else {
-                                    Icon(
-                                        imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
+                                    AnimatedNavIcon(
+                                        tab = item.tab,
+                                        icon = if (isSelected) item.selectedIcon else item.unselectedIcon,
                                         contentDescription = item.label,
                                         tint = animatedContentColor,
-                                        modifier = Modifier.size(20.dp)
+                                        triggerCount = itemTriggerCount,
+                                        size = 20.dp
                                     )
                                 }
 
@@ -629,34 +698,38 @@ fun PixelFloatingBottomNavBar(
                 animationSpec = tween(220),
                 label = "settingsIconTint"
             )
-            val settingsRotation by animateFloatAsState(
-                targetValue = if (isSettingsSelected) 45f else 0f,
-                animationSpec = spring(dampingRatio = 0.75f, stiffness = 300f),
-                label = "settingsRotation"
-            )
-
             Surface(
                 shape = CircleShape,
                 color = settingsBg,
                 border = if (isSettingsSelected) null else navBorder,
-                shadowElevation = 0.dp,
+                shadowElevation = 10.dp,
+                tonalElevation = 2.dp,
                 modifier = Modifier
+                    .shadow(
+                        elevation = 12.dp,
+                        shape = CircleShape,
+                        spotColor = Color.Black.copy(alpha = if (isDark) 0.65f else 0.30f),
+                        ambientColor = Color.Black.copy(alpha = if (isDark) 0.45f else 0.20f)
+                    )
                     .size(48.dp)
                     .clip(CircleShape)
-                    .clickable { onSelectTab(AppTab.SETTINGS) }
+                    .clickable {
+                        animTriggerSettings.intValue++
+                        onSelectTab(AppTab.SETTINGS)
+                    }
                     .testTag("nav_settings")
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = if (isSettingsSelected) Icons.Filled.Settings else Icons.Outlined.Settings,
+                    AnimatedNavIcon(
+                        tab = AppTab.SETTINGS,
+                        icon = if (isSettingsSelected) Icons.Filled.Settings else Icons.Outlined.Settings,
                         contentDescription = "Settings",
                         tint = settingsIconTint,
-                        modifier = Modifier
-                            .size(20.dp)
-                            .graphicsLayer { rotationZ = settingsRotation }
+                        triggerCount = animTriggerSettings.intValue,
+                        size = 20.dp
                     )
                 }
             }

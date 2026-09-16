@@ -26,6 +26,9 @@ data class AppStrings(
     val editDetails: String,
     val shareSpot: String,
     val noActiveSpotSubtitle: String,
+    val autoSavedViaBt: String,
+    val gpsLocationSaved: String,
+    val noActiveParking: String,
     val recentSpots: String,
     val viewAll: String,
     val floor: String,
@@ -46,7 +49,6 @@ data class AppStrings(
 
     // Compass Radar Screen
     val waypointRadarTitle: String,
-    val waypointRadarSubtitle: String,
     val meters: String,
     val locating: String,
     val carIsHere: String,
@@ -110,6 +112,9 @@ data class AppStrings(
     val systemTheme: String,
     val lightTheme: String,
     val darkTheme: String,
+    val additionalSettings: String,
+    val sunScheduleTitle: String,
+    val sunScheduleSubtitle: String,
     val oledMode: String,
     val oledSubtitle: String,
     val dynamicColor: String,
@@ -155,7 +160,26 @@ data class AppStrings(
     val aboutTitle: String,
     val aboutSettingsSubtitle: String,
     val reportAnIssueTitle: String,
-    val reportAnIssueUrl: String
+    val reportAnIssueUrl: String,
+    val carBadgeStyleTitle: String,
+    val carBadgeStyleSubtitle: String,
+    val carBadgeStyleMaterial: String,
+    val carBadgeStyleCinematic: String,
+
+    // Parking Timer
+    val parkingTimerTitle: String = "Parking Timer",
+    val setParkingTimer: String = "Set Parking Timer",
+    val parkingTimerRunning: String = "Parking Timer",
+    val earlyReminderAlerts: String = "Early Reminder Alerts",
+    val reminderMinutesBefore: String = "Minutes before expiry",
+    val timerAlarmSound: String = "Timer Alarm Sound",
+    val timerAlarmSoundDesc: String = "Device alarm sound played when timer ends",
+    val testAlarmSound: String = "Test Alarm Sound",
+    val openDeviceSoundSettings: String = "Device Sound Settings",
+    val alarmExpiredTitle: String = "Parking Timer Expired!",
+    val alarmExpiredMessage: String = "Your parking timer has ended. Please check your vehicle.",
+    val dismissAlarm: String = "Dismiss Alarm",
+    val snooze5m: String = "Snooze 5 Min"
 )
 
 val EnglishStrings = AppStrings(
@@ -180,6 +204,9 @@ val EnglishStrings = AppStrings(
     editDetails = "Edit Details",
     shareSpot = "Share Spot",
     noActiveSpotSubtitle = "Your parking spot will save automatically when your car's Bluetooth disconnects, or tap below to record your parking spot manually.",
+    autoSavedViaBt = "Auto-saved via Bluetooth disconnect",
+    gpsLocationSaved = "GPS location saved",
+    noActiveParking = "No Active Parking",
     recentSpots = "Recent Spots",
     viewAll = "View All",
     floor = "Floor",
@@ -199,7 +226,6 @@ val EnglishStrings = AppStrings(
     tapToNavigateRadar = "Tap card to start Waypoint radar navigation",
 
     waypointRadarTitle = "Waypoint Radar",
-    waypointRadarSubtitle = "Direct bearing & walking distance",
     meters = "m",
     locating = "Locating...",
     carIsHere = "Car is right here",
@@ -260,6 +286,9 @@ val EnglishStrings = AppStrings(
     systemTheme = "System",
     lightTheme = "Light",
     darkTheme = "Dark",
+    additionalSettings = "Additional Settings",
+    sunScheduleTitle = "Sunrise & Sunset Schedule",
+    sunScheduleSubtitle = "Makes automatic light dark theming independent from the system.",
     oledMode = "Pure Black",
     oledSubtitle = "Deep black backgrounds for AMOLED screens",
     dynamicColor = "Dynamic Color (Material You)",
@@ -305,7 +334,11 @@ val EnglishStrings = AppStrings(
     aboutTitle = "About",
     aboutSettingsSubtitle = "Settings",
     reportAnIssueTitle = "Report an Issue",
-    reportAnIssueUrl = "issues.new"
+    reportAnIssueUrl = "issues.new",
+    carBadgeStyleTitle = "Car Artwork Style",
+    carBadgeStyleSubtitle = "Choose between minimalist flat vectors or dynamic cinematic illustrations",
+    carBadgeStyleMaterial = "Material",
+    carBadgeStyleCinematic = "Cinematic"
 )
 
 val GreekStrings = AppStrings(
@@ -319,7 +352,7 @@ val GreekStrings = AppStrings(
     activeParking = "Ενεργή Στάθμευση",
     readyToPark = "Έτοιμο για Στάθμευση",
     parkedVehicle = "Σταθμευμένο Όχημα",
-    myParkedCar = "Το Σταθμευμένο Αυτοκίνητό μου",
+    myParkedCar = "Το Αυτοκίνητό μου",
     parkedAt = "Στάθμευση στις",
     accuracy = "Ακρίβεια GPS",
     parkHereNow = "Χειροκίνητη Αποθήκευση",
@@ -329,7 +362,10 @@ val GreekStrings = AppStrings(
     googleMaps = "Χάρτες Google",
     editDetails = "Επεξεργασία",
     shareSpot = "Κοινοποίηση",
-    noActiveSpotSubtitle = "Η θέση στάθμευσης αποθηκεύεται αυτόματα κατά την αποσύνδεση του Bluetooth του αυτοκινήτου, ή πατήστε παρακάτω για χειροκίνητη καταγραφή.",
+    noActiveSpotSubtitle = "Η τοποθεσία στάθμευσης θα αποθηκευτεί αυτόματα μόλις αποσυνδεθεί το Bluetooth του αυτοκινήτου σας, ή πατήστε παρακάτω για να την καταγράψετε χειροκίνητα.",
+    autoSavedViaBt = "Αποθηκεύτηκε αυτόματα μέσω Bluetooth",
+    gpsLocationSaved = "Η τοποθεσία GPS αποθηκεύτηκε",
+    noActiveParking = "Δεν υπάρχει ενεργή στάθμευση",
     recentSpots = "Πρόσφατες Θέσεις",
     viewAll = "Όλες",
     floor = "Όροφος",
@@ -349,7 +385,6 @@ val GreekStrings = AppStrings(
     tapToNavigateRadar = "Πατήστε για έναρξη πλοήγησης με Ραντάρ",
 
     waypointRadarTitle = "Ραντάρ Πλοήγησης",
-    waypointRadarSubtitle = "Κατεύθυνση & απόσταση με τα πόδια",
     meters = "μ.",
     locating = "Εντοπισμός...",
     carIsHere = "Το όχημα είναι ακριβώς εδώ",
@@ -410,6 +445,9 @@ val GreekStrings = AppStrings(
     systemTheme = "Σύστημα",
     lightTheme = "Φωτεινό",
     darkTheme = "Σκοτεινό",
+    additionalSettings = "Πρόσθετες ρυθμίσεις",
+    sunScheduleTitle = "Εναλλαγή με βάση την ανατολή & δύση",
+    sunScheduleSubtitle = "Αυτόματη εναλλαγή φωτεινού/σκοτεινού θέματος ανεξάρτητα από το σύστημα.",
     oledMode = "Καθαρό Μαύρο",
     oledSubtitle = "Βαθύ μαύρο φόντο για οθόνες AMOLED",
     dynamicColor = "Δυναμικό Χρώμα (Material You)",
@@ -455,7 +493,11 @@ val GreekStrings = AppStrings(
     aboutTitle = "Σχετικά",
     aboutSettingsSubtitle = "Ρυθμίσεις",
     reportAnIssueTitle = "Αναφορά σφάλματος",
-    reportAnIssueUrl = "issues.new"
+    reportAnIssueUrl = "issues.new",
+    carBadgeStyleTitle = "Στιλ Γραφικών Αυτοκινήτων",
+    carBadgeStyleSubtitle = "Επιλέξτε ανάμεσα σε λιτά διανυσματικά γραφικά Material ή δυναμική κινηματογραφική απεικόνιση",
+    carBadgeStyleMaterial = "Material",
+    carBadgeStyleCinematic = "Κινηματογραφικό"
 )
 
 fun getAppStrings(language: AppLanguage): AppStrings = when (language) {

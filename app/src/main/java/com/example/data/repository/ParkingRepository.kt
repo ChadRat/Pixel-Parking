@@ -59,8 +59,26 @@ class ParkingRepository(
         parkingSpotDao.clearAllSpots()
     }
 
+    suspend fun getAllDevicesDirect(): List<BluetoothCarDevice> {
+        return bluetoothCarDeviceDao.getAllDevicesDirect()
+    }
+
+    suspend fun getDeviceByAddress(address: String): BluetoothCarDevice? {
+        return bluetoothCarDeviceDao.getDeviceByAddress(address)
+    }
+
     suspend fun registerBluetoothDevice(device: BluetoothCarDevice, setAsPrimary: Boolean = false) {
-        bluetoothCarDeviceDao.insertOrUpdate(device)
+        val existing = bluetoothCarDeviceDao.getDeviceByAddress(device.address)
+        if (existing != null) {
+            val updated = existing.copy(
+                name = if (existing.isCustomRenamed) existing.name else device.name,
+                deviceType = if (existing.deviceType.isNotBlank()) existing.deviceType else device.deviceType,
+                isMonitoredCar = if (setAsPrimary) true else existing.isMonitoredCar
+            )
+            bluetoothCarDeviceDao.update(updated)
+        } else {
+            bluetoothCarDeviceDao.insertOrUpdate(device.copy(isMonitoredCar = if (setAsPrimary) true else device.isMonitoredCar))
+        }
     }
 
     suspend fun updateBluetoothDevice(device: BluetoothCarDevice) {

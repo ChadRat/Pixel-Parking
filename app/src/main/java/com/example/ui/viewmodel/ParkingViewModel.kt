@@ -20,9 +20,11 @@ import com.example.sensor.DeviceHardwareProfile
 import com.example.sensor.HapticPatternEvent
 import com.example.sensor.HardwareSensorProfiler
 import com.example.sensor.LocationHelper
+import com.example.sensor.SunCalculator
 import com.example.sensor.WaypointHapticMode
 import com.example.service.ParkingRadarService
 import com.example.service.WaypointHapticService
+import com.example.ui.components.CarBadgeStyle
 import com.example.ui.i18n.AppLanguage
 import com.example.ui.theme.AppThemeMode
 import com.example.util.BluetoothDeviceHelper
@@ -73,8 +75,23 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     private val _oledMode = MutableStateFlow(prefs.getBoolean("oled_mode", false))
     val oledMode: StateFlow<Boolean> = _oledMode.asStateFlow()
 
+    private val _autoSunTheme = MutableStateFlow(prefs.getBoolean("auto_sun_theme", false))
+    val autoSunTheme: StateFlow<Boolean> = _autoSunTheme.asStateFlow()
+
+    private val _isDaytime = MutableStateFlow(true)
+    val isDaytime: StateFlow<Boolean> = _isDaytime.asStateFlow()
+
     private val _dynamicColor = MutableStateFlow(prefs.getBoolean("dynamic_color", true))
     val dynamicColor: StateFlow<Boolean> = _dynamicColor.asStateFlow()
+
+    private val _carBadgeStyle = MutableStateFlow(
+        try {
+            CarBadgeStyle.valueOf(prefs.getString("car_badge_style", CarBadgeStyle.CINEMATIC.name) ?: CarBadgeStyle.CINEMATIC.name)
+        } catch (_: Exception) {
+            CarBadgeStyle.CINEMATIC
+        }
+    )
+    val carBadgeStyle: StateFlow<CarBadgeStyle> = _carBadgeStyle.asStateFlow()
 
     private val _appLanguage = MutableStateFlow(
         try {
@@ -148,6 +165,9 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     private val _isDevHapticDiagnostics = MutableStateFlow(prefs.getBoolean("dev_haptic_diag", false))
     val isDevHapticDiagnostics: StateFlow<Boolean> = _isDevHapticDiagnostics.asStateFlow()
 
+    private val _isParkingTimerFeatureEnabled = MutableStateFlow(prefs.getBoolean("parking_timer_feature_enabled", false))
+    val isParkingTimerFeatureEnabled: StateFlow<Boolean> = _isParkingTimerFeatureEnabled.asStateFlow()
+
     // Active Bluetooth Proximity Tracking
     private val _activeBtProximityDevice = MutableStateFlow<BluetoothCarDevice?>(null)
     val activeBtProximityDevice: StateFlow<BluetoothCarDevice?> = _activeBtProximityDevice.asStateFlow()
@@ -157,6 +177,49 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
 
     private val _btProximityDistanceMeters = MutableStateFlow(8.0f)
     val btProximityDistanceMeters: StateFlow<Float> = _btProximityDistanceMeters.asStateFlow()
+
+    // --- Parking & Charging Timer Feature ---
+    private val _timerTotalSeconds = MutableStateFlow(
+        prefs.getLong("parking_timer_total_seconds", 30 * 60L).coerceIn(60L, 24 * 3600L)
+    )
+    val timerTotalSeconds: StateFlow<Long> = _timerTotalSeconds.asStateFlow()
+
+    private val _timerRemainingSeconds = MutableStateFlow(
+        prefs.getLong("parking_timer_total_seconds", 30 * 60L).coerceIn(60L, 24 * 3600L)
+    )
+    val timerRemainingSeconds: StateFlow<Long> = _timerRemainingSeconds.asStateFlow()
+
+    private val _timerIsRunning = MutableStateFlow(false)
+    val timerIsRunning: StateFlow<Boolean> = _timerIsRunning.asStateFlow()
+
+    private val _timerIsPaused = MutableStateFlow(false)
+    val timerIsPaused: StateFlow<Boolean> = _timerIsPaused.asStateFlow()
+
+    // Up to 3 reminder alerts before end of timer (e.g. 15, 10, 5 mins)
+    private val _timerRemindersMinutes = MutableStateFlow(
+        prefs.getString("parking_timer_reminders", "15,10,5")
+            ?.split(",")
+            ?.mapNotNull { it.trim().toIntOrNull() }
+            ?.filter { it > 0 }
+            ?.take(3)
+            ?.ifEmpty { listOf(15, 10, 5) }
+            ?: listOf(15, 10, 5)
+    )
+    val timerRemindersMinutes: StateFlow<List<Int>> = _timerRemindersMinutes.asStateFlow()
+
+    private val _timerAlertsTriggered = MutableStateFlow<Set<Int>>(emptySet())
+    val timerAlertsTriggered: StateFlow<Set<Int>> = _timerAlertsTriggered.asStateFlow()
+
+    private val _isAlarmActive = MutableStateFlow(false)
+    val isAlarmActive: StateFlow<Boolean> = _isAlarmActive.asStateFlow()
+
+    private val _showTimerDialog = MutableStateFlow(false)
+    val showTimerDialog: StateFlow<Boolean> = _showTimerDialog.asStateFlow()
+
+    private val _alarmSoundTitle = MutableStateFlow(com.example.util.AlarmSoundHelper.getAlarmTitle(application))
+    val alarmSoundTitle: StateFlow<String> = _alarmSoundTitle.asStateFlow()
+
+    private var timerJob: kotlinx.coroutines.Job? = null
 
     private val _btProximityRelativeAngle = MutableStateFlow(0f)
     val btProximityRelativeAngle: StateFlow<Float> = _btProximityRelativeAngle.asStateFlow()
@@ -221,12 +284,20 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         startLocationTracking()
         refreshCurrentLocation()
         syncSystemPairedDevices()
+        updateDaytimeState()
+        viewModelScope.launch {
+            while (isActive) {
+                updateDaytimeState()
+                kotlinx.coroutines.delay(60_000L)
+            }
+        }
     }
 
     fun startLocationTracking() {
         if (locationCallback != null) return
         locationCallback = LocationHelper.startContinuousLocationUpdates(getApplication(), 4000L) { loc ->
             _currentLocation.value = loc
+            updateDaytimeState()
             viewModelScope.launch(Dispatchers.IO) {
                 val addr = LocationHelper.getAddressFromCoordinates(getApplication(), loc.latitude, loc.longitude)
                 _currentAddress.value = addr
@@ -254,6 +325,18 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         prefs.edit().putString("theme_mode", mode.name).apply()
     }
 
+    fun setAutoSunTheme(enabled: Boolean) {
+        _autoSunTheme.value = enabled
+        prefs.edit().putBoolean("auto_sun_theme", enabled).apply()
+        updateDaytimeState()
+    }
+
+    fun updateDaytimeState() {
+        val loc = _currentLocation.value
+        val sunTimes = SunCalculator.getSunTimes(loc?.latitude, loc?.longitude)
+        _isDaytime.value = sunTimes.isDaytime
+    }
+
     fun setOledMode(enabled: Boolean) {
         _oledMode.value = enabled
         prefs.edit().putBoolean("oled_mode", enabled).apply()
@@ -262,6 +345,11 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     fun setDynamicColor(enabled: Boolean) {
         _dynamicColor.value = enabled
         prefs.edit().putBoolean("dynamic_color", enabled).apply()
+    }
+
+    fun setCarBadgeStyle(style: CarBadgeStyle) {
+        _carBadgeStyle.value = style
+        prefs.edit().putString("car_badge_style", style.name).apply()
     }
 
     fun setAppLanguage(language: AppLanguage) {
@@ -355,6 +443,7 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             val loc = LocationHelper.getCurrentLocation(getApplication())
             if (loc != null) {
                 _currentLocation.value = loc
+                updateDaytimeState()
                 val addr = LocationHelper.getAddressFromCoordinates(getApplication(), loc.latitude, loc.longitude)
                 _currentAddress.value = addr
             }
@@ -534,12 +623,16 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val systemBonded = BluetoothDeviceHelper.getSystemBondedDevices(getApplication())
             if (!systemBonded.isNullOrEmpty()) {
-                val existing = repository.allDevices.stateIn(viewModelScope).value
-                val existingAddresses = existing.map { it.address }.toSet()
+                val existing = repository.getAllDevicesDirect()
+                val existingMap = existing.associateBy { it.address.uppercase() }
 
                 systemBonded.forEach { dev ->
-                    if (dev.address !in existingAddresses) {
+                    val found = existingMap[dev.address.uppercase()]
+                    if (found == null) {
                         repository.registerBluetoothDevice(dev, setAsPrimary = false)
+                    } else if (!found.isCustomRenamed && found.name != dev.name) {
+                        // Update system name only if user has NOT custom renamed it
+                        repository.updateBluetoothDevice(found.copy(name = dev.name))
                     }
                 }
             }
@@ -754,6 +847,15 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         prefs.edit().putBoolean("dev_haptic_diag", enabled).apply()
     }
 
+    fun setParkingTimerFeatureEnabled(enabled: Boolean) {
+        _isParkingTimerFeatureEnabled.value = enabled
+        prefs.edit().putBoolean("parking_timer_feature_enabled", enabled).apply()
+        if (!enabled) {
+            // Optional: reset or stop timer if disabled while running
+            resetTimerToZero()
+        }
+    }
+
     fun startBtProximityFinder(device: BluetoothCarDevice): Boolean {
         val isConnected = BluetoothDeviceHelper.isDeviceConnected(getApplication(), device.address)
         if (!isConnected) {
@@ -812,6 +914,208 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         btProximityJob?.cancel()
         btProximityJob = null
         _activeBtProximityDevice.value = null
+    }
+
+    // --- Parking & Charging Timer Methods ---
+
+    fun openParkingTimer() {
+        _showTimerDialog.value = true
+    }
+
+    fun closeParkingTimer() {
+        _showTimerDialog.value = false
+    }
+
+    fun startParkingTimer() {
+        if (_timerRemainingSeconds.value <= 0) {
+            _timerRemainingSeconds.value = _timerTotalSeconds.value
+        }
+        _timerIsRunning.value = true
+        _timerIsPaused.value = false
+        _isAlarmActive.value = false
+        com.example.util.AlarmSoundHelper.stopAlarm(getApplication())
+
+        // Sync with active spot if present
+        activeSpot.value?.let { spot ->
+            val expiryMs = System.currentTimeMillis() + (_timerRemainingSeconds.value * 1000L)
+            viewModelScope.launch {
+                repository.updateParkingSpot(spot.copy(meterExpiryTimestamp = expiryMs))
+            }
+        }
+
+        timerJob?.cancel()
+        timerJob = viewModelScope.launch {
+            while (_timerIsRunning.value && _timerRemainingSeconds.value > 0) {
+                kotlinx.coroutines.delay(1000L)
+                val remaining = _timerRemainingSeconds.value - 1
+                _timerRemainingSeconds.value = remaining
+
+                // Check early notification reminders (up to 3 times before end)
+                val remainingMinutes = (remaining / 60).toInt()
+                val triggered = _timerAlertsTriggered.value
+                val reminders = _timerRemindersMinutes.value
+
+                for (alertMin in reminders) {
+                    if (remainingMinutes <= alertMin && remainingMinutes > 0 && !triggered.contains(alertMin)) {
+                        _timerAlertsTriggered.value = triggered + alertMin
+                        com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                            getApplication(),
+                            "Parking & Charging Timer",
+                            "⚠️ $alertMin minutes remaining before your parking / charging time ends!"
+                        )
+                        HapticHelper.getVibrator(getApplication())?.let { v ->
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                v.vibrate(android.os.VibrationEffect.createWaveform(longArrayOf(0, 300, 200, 300), -1))
+                            } else {
+                                @Suppress("DEPRECATION")
+                                v.vibrate(longArrayOf(0, 300, 200, 300), -1)
+                            }
+                        }
+                    }
+                }
+
+                if (remaining <= 0) {
+                    _timerIsRunning.value = false
+                    _timerIsPaused.value = false
+                    _isAlarmActive.value = true
+                    _timerRemainingSeconds.value = 0
+
+                    com.example.util.AlarmSoundHelper.playAlarm(getApplication())
+                    com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                        getApplication(),
+                        "🚨 PARKING TIMER EXPIRED!",
+                        "Time is up! Your parking or charging session has ended. Move your car or unplug now."
+                    )
+                    break
+                }
+            }
+        }
+    }
+
+    fun pauseParkingTimer() {
+        _timerIsRunning.value = false
+        _timerIsPaused.value = true
+        timerJob?.cancel()
+    }
+
+    fun resetParkingTimer() {
+        _timerIsRunning.value = false
+        _timerIsPaused.value = false
+        timerJob?.cancel()
+        _timerRemainingSeconds.value = _timerTotalSeconds.value
+        _timerAlertsTriggered.value = emptySet()
+        _isAlarmActive.value = false
+        com.example.util.AlarmSoundHelper.stopAlarm(getApplication())
+    }
+
+    fun resetTimerToZero() {
+        _timerIsRunning.value = false
+        _timerIsPaused.value = false
+        timerJob?.cancel()
+        _timerTotalSeconds.value = 0L
+        _timerRemainingSeconds.value = 0L
+        prefs.edit().putLong("parking_timer_total_seconds", 0L).apply()
+        _timerAlertsTriggered.value = emptySet()
+        _isAlarmActive.value = false
+        com.example.util.AlarmSoundHelper.stopAlarm(getApplication())
+    }
+
+    fun toggleTimerPlayPause() {
+        if (_timerIsRunning.value) {
+            pauseParkingTimer()
+        } else {
+            if (_timerRemainingSeconds.value > 0L) {
+                startParkingTimer()
+            }
+        }
+    }
+
+    fun addTimerMinutes(minutes: Int) {
+        val newTotal = (_timerTotalSeconds.value + (minutes * 60L)).coerceIn(60L, 24 * 3600L)
+        _timerTotalSeconds.value = newTotal
+        prefs.edit().putLong("parking_timer_total_seconds", newTotal).apply()
+        val newRemaining = (_timerRemainingSeconds.value + (minutes * 60L)).coerceIn(0L, 24 * 3600L)
+        _timerRemainingSeconds.value = newRemaining
+    }
+
+    fun setTimerDuration(seconds: Long) {
+        val clamped = seconds.coerceIn(0L, 24 * 3600L)
+        _timerTotalSeconds.value = clamped
+        prefs.edit().putLong("parking_timer_total_seconds", clamped).apply()
+        if (!_timerIsRunning.value) {
+            _timerRemainingSeconds.value = clamped
+            _timerAlertsTriggered.value = emptySet()
+        }
+    }
+
+    fun adjustTimerByDrag(isClockwise: Boolean) {
+        if (isClockwise) {
+            // Clockwise: add minutes (+1 min)
+            val current = _timerTotalSeconds.value
+            val newTotal = (current + 60L).coerceIn(60L, 24 * 3600L)
+            _timerTotalSeconds.value = newTotal
+            prefs.edit().putLong("parking_timer_total_seconds", newTotal).apply()
+            if (!_timerIsRunning.value) {
+                _timerRemainingSeconds.value = newTotal
+            } else {
+                _timerRemainingSeconds.value = (_timerRemainingSeconds.value + 60L).coerceIn(1L, 24 * 3600L)
+            }
+        } else {
+            // Counter-clockwise: subtract minutes (-1 min) down to 0
+            val current = _timerTotalSeconds.value
+            val newTotal = (current - 60L).coerceAtLeast(0L)
+            _timerTotalSeconds.value = newTotal
+            prefs.edit().putLong("parking_timer_total_seconds", newTotal).apply()
+            if (!_timerIsRunning.value) {
+                _timerRemainingSeconds.value = newTotal
+            } else {
+                _timerRemainingSeconds.value = (_timerRemainingSeconds.value - 60L).coerceAtLeast(0L)
+            }
+        }
+    }
+
+    fun adjustReminderMinutes(index: Int, isAdd: Boolean) {
+        val currentList = _timerRemindersMinutes.value.toMutableList()
+        while (currentList.size < 3) {
+            currentList.add(when (currentList.size) { 0 -> 15; 1 -> 10; else -> 5 })
+        }
+        if (index in 0 until currentList.size) {
+            val currentVal = currentList[index]
+            val newVal = if (isAdd) {
+                (currentVal + 1).coerceIn(1, 180)
+            } else {
+                (currentVal - 1).coerceAtLeast(0)
+            }
+            currentList[index] = newVal
+            _timerRemindersMinutes.value = currentList
+            prefs.edit().putString("parking_timer_reminders", currentList.joinToString(",")).apply()
+        }
+    }
+
+    fun setTimerReminders(reminders: List<Int>) {
+        val valid = reminders.filter { it > 0 }.take(3).distinct().sortedDescending()
+        _timerRemindersMinutes.value = valid
+        prefs.edit().putString("parking_timer_reminders", valid.joinToString(",")).apply()
+    }
+
+    fun dismissTimerAlarm() {
+        _isAlarmActive.value = false
+        com.example.util.AlarmSoundHelper.stopAlarm(getApplication())
+    }
+
+    fun snoozeTimerAlarm(minutes: Int = 5) {
+        dismissTimerAlarm()
+        setTimerDuration(minutes * 60L)
+        startParkingTimer()
+    }
+
+    fun updateAlarmSoundUri(uri: Uri) {
+        com.example.util.AlarmSoundHelper.saveAlarmUri(getApplication(), uri)
+        _alarmSoundTitle.value = com.example.util.AlarmSoundHelper.getAlarmTitle(getApplication(), uri)
+    }
+
+    fun refreshAlarmTitle() {
+        _alarmSoundTitle.value = com.example.util.AlarmSoundHelper.getAlarmTitle(getApplication())
     }
 
     override fun onCleared() {

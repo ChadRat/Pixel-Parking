@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.entity.ParkingSpot
 import com.example.ui.components.EditSpotDialog
 import com.example.ui.components.ParkingMeterWidget
+import com.example.ui.components.ParkingTimerButton
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.ui.draw.blur
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -112,6 +113,10 @@ fun HomeScreen(
     val currentLocation by viewModel.currentLocation.collectAsState()
     val currentAddress by viewModel.currentAddress.collectAsState()
     val isGpsRefreshing by viewModel.isGpsRefreshing.collectAsState()
+    val carBadgeStyle by viewModel.carBadgeStyle.collectAsState()
+    val isTimerRunning by viewModel.timerIsRunning.collectAsStateWithLifecycle()
+    val timerRemainingSeconds by viewModel.timerRemainingSeconds.collectAsStateWithLifecycle()
+    val isParkingTimerEnabled by viewModel.isParkingTimerFeatureEnabled.collectAsStateWithLifecycle()
 
     var showNewParkDialog by remember { mutableStateOf(false) }
     var tapTimestamps by remember { mutableStateOf(emptyList<Long>()) }
@@ -164,10 +169,11 @@ fun HomeScreen(
 
                 // Car BT Quick Pill
                 Surface(
+                    onClick = { onNavigateTab(AppTab.BLUETOOTH_AUTO) },
                     shape = RoundedCornerShape(20.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier
-                        .clickable { onNavigateTab(AppTab.BLUETOOTH_AUTO) }
+                        .clip(RoundedCornerShape(20.dp))
                         .testTag("car_bt_status_pill")
                 ) {
                     Row(
@@ -199,6 +205,11 @@ fun HomeScreen(
                 currentLocation = currentLocation,
                 currentAddress = currentAddress,
                 isGpsRefreshing = isGpsRefreshing,
+                carBadgeStyle = carBadgeStyle,
+                isTimerRunning = isTimerRunning,
+                timerRemainingSeconds = timerRemainingSeconds,
+                isParkingTimerEnabled = isParkingTimerEnabled,
+                onOpenTimer = { viewModel.openParkingTimer() },
                 onManualPark = { showNewParkDialog = true },
                 onFoundCar = { viewModel.markCarFound() },
                 onRefreshGps = { viewModel.refreshCurrentLocation() }
@@ -216,13 +227,13 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Recent Parking Spots",
+                        text = strings.recentSpots,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "View All (${recentSpots.size})",
+                        text = "${strings.viewAll} (${recentSpots.size})",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Medium,
@@ -265,6 +276,11 @@ fun EmptyParkingStateCard(
     currentLocation: android.location.Location?,
     currentAddress: String,
     isGpsRefreshing: Boolean,
+    carBadgeStyle: com.example.ui.components.CarBadgeStyle = com.example.ui.components.CarBadgeStyle.CINEMATIC,
+    isTimerRunning: Boolean = false,
+    timerRemainingSeconds: Long = 0L,
+    isParkingTimerEnabled: Boolean = false,
+    onOpenTimer: () -> Unit = {},
     onManualPark: () -> Unit,
     onFoundCar: () -> Unit,
     onRefreshGps: () -> Unit
@@ -286,21 +302,24 @@ fun EmptyParkingStateCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             PixelAnimatedCarBadge(
-                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
-                size = 110.dp
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp, bottom = 2.dp),
+                size = 176.dp,
+                style = carBadgeStyle
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = if (hasActiveSpot) (activeSpot?.spotName?.ifBlank { strings.myParkedCar } ?: strings.myParkedCar) else "No Active Parking",
+                text = if (hasActiveSpot) (activeSpot?.spotName?.ifBlank { strings.myParkedCar } ?: strings.myParkedCar) else strings.noActiveParking,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
 
             Text(
-                text = if (hasActiveSpot) (if (activeSpot?.isAutoSaved == true) "Auto-saved via Bluetooth disconnect" else "GPS location saved") else strings.noActiveSpotSubtitle,
+                text = if (hasActiveSpot) (if (activeSpot?.isAutoSaved == true) strings.autoSavedViaBt else strings.gpsLocationSaved) else strings.noActiveSpotSubtitle,
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 6.dp)
@@ -355,6 +374,18 @@ fun EmptyParkingStateCard(
             }
 
             Spacer(modifier = Modifier.height(6.dp))
+
+            // Blue Parking / Charging Timer Button when navigation has started
+            if (hasActiveSpot && isParkingTimerEnabled) {
+                ParkingTimerButton(
+                    isRunning = isTimerRunning,
+                    remainingSeconds = timerRemainingSeconds,
+                    onClick = onOpenTimer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp)
+                )
+            }
 
             // Action Button: Park Here Now / Found Car
             if (hasActiveSpot) {
@@ -433,11 +464,11 @@ fun RecentSpotItem(
     ) {
         // Main Spot Capsule
         Surface(
+            onClick = { onClick() },
             modifier = Modifier
                 .weight(1f)
                 .height(68.dp)
-                .clip(RoundedCornerShape(26.dp))
-                .clickable { onClick() },
+                .clip(RoundedCornerShape(26.dp)),
             shape = RoundedCornerShape(26.dp),
             color = MaterialTheme.colorScheme.surfaceContainer
         ) {
@@ -492,10 +523,10 @@ fun RecentSpotItem(
 
         // Separate Red Delete Pill (compact)
         Surface(
+            onClick = { onDelete() },
             modifier = Modifier
                 .size(46.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .clickable { onDelete() }
                 .testTag("delete_spot_${spot.id}"),
             shape = RoundedCornerShape(16.dp),
             color = deleteRed

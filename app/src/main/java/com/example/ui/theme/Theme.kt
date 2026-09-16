@@ -1,5 +1,6 @@
 package com.example.ui.theme
 
+import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,9 +12,12 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 
 enum class AppThemeMode {
     SYSTEM,
@@ -94,6 +98,48 @@ fun ColorScheme.toOledColorScheme(): ColorScheme {
     )
 }
 
+/**
+ * Warms the light color scheme and infuses the wallpaper's dynamic palette into the background and surfaces.
+ * Prevents sterile, harsh #FFFFFF backgrounds while creating a softer, warmer feel that adapts to wallpaper colors.
+ */
+fun ColorScheme.toWarmLightColorScheme(): ColorScheme {
+    // Warm, welcoming foundation (soft organic cream/sand tone instead of harsh stark white)
+    val warmBase = Color(0xFFF9F6F0)
+    val warmSurface = Color(0xFFFFFDF9)
+    val warmContainer = Color(0xFFF3EFE6)
+    val warmContainerHigh = Color(0xFFECE7DC)
+    val warmContainerHighest = Color(0xFFE5DFD2)
+
+    // Wallpaper dynamic accent tint (extracted from the Material wallpaper dynamic theme)
+    val wallpaperAccent = this.primary
+
+    // Infuse a gentle tint of the wallpaper color into the warm base
+    val dynamicWarmBackground = warmBase.blendWith(wallpaperAccent, 0.05f)
+    val dynamicWarmSurface = warmSurface.blendWith(wallpaperAccent, 0.025f)
+    val dynamicWarmContainer = warmContainer.blendWith(wallpaperAccent, 0.05f)
+    val dynamicWarmContainerHigh = warmContainerHigh.blendWith(wallpaperAccent, 0.06f)
+    val dynamicWarmContainerHighest = warmContainerHighest.blendWith(wallpaperAccent, 0.07f)
+
+    return this.copy(
+        background = dynamicWarmBackground,
+        surface = dynamicWarmSurface,
+        surfaceDim = dynamicWarmContainerHigh,
+        surfaceBright = dynamicWarmSurface,
+        surfaceContainerLowest = dynamicWarmSurface,
+        surfaceContainerLow = dynamicWarmContainer,
+        surfaceContainer = dynamicWarmContainer,
+        surfaceContainerHigh = dynamicWarmContainerHigh,
+        surfaceContainerHighest = dynamicWarmContainerHighest
+    )
+}
+
+private fun Color.blendWith(other: Color, ratio: Float): Color {
+    val r = this.red * (1f - ratio) + other.red * ratio
+    val g = this.green * (1f - ratio) + other.green * ratio
+    val b = this.blue * (1f - ratio) + other.blue * ratio
+    return Color(red = r, green = g, blue = b, alpha = this.alpha)
+}
+
 // Material 3 Expressive Shape Tokens (organic pills, squircles & expressive rounded corners)
 val PixelExpressiveShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
@@ -115,13 +161,15 @@ fun MyApplicationTheme(
     themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     dynamicColor: Boolean = true,
     oledMode: Boolean = false,
+    autoSunTheme: Boolean = false,
+    isDaytime: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val systemInDark = isSystemInDarkTheme()
 
     val isDark = when (themeMode) {
-        AppThemeMode.SYSTEM -> systemInDark
+        AppThemeMode.SYSTEM -> if (autoSunTheme) !isDaytime else systemInDark
         AppThemeMode.LIGHT -> false
         AppThemeMode.DARK -> true
     }
@@ -133,12 +181,21 @@ fun MyApplicationTheme(
         if (isDark) PixelDarkColorScheme else PixelLightColorScheme
     }
 
-    // OLED mode does not change the app's accent colors, it just sets the background & surface to pure pitch black #000000
-    // OLED theme is strictly not available in light mode (only active when dark mode is enabled)
-    val colorScheme = if (oledMode && isDark) {
-        baseScheme.toOledColorScheme()
-    } else {
-        baseScheme
+    // OLED mode sets background & surface to pure pitch black #000000 (only active when dark mode is enabled)
+    // Light mode applies a warmer background infused with the dynamic Material wallpaper palette
+    val colorScheme = when {
+        oledMode && isDark -> baseScheme.toOledColorScheme()
+        !isDark -> baseScheme.toWarmLightColorScheme()
+        else -> baseScheme
+    }
+
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDark
+            WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !isDark
+        }
     }
 
     MaterialTheme(

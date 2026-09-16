@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -56,6 +57,7 @@ fun DeveloperOptionsScreen(
     val isMockGps by viewModel.isDevMockGpsEnabled.collectAsStateWithLifecycle()
     val isBtProximity by viewModel.isBtProximityEnabled.collectAsStateWithLifecycle()
     val isHapticDiag by viewModel.isDevHapticDiagnostics.collectAsStateWithLifecycle()
+    val isParkingTimerEnabled by viewModel.isParkingTimerFeatureEnabled.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier
@@ -189,6 +191,18 @@ fun DeveloperOptionsScreen(
                     checked = isHapticDiag,
                     onCheckedChange = { viewModel.setDevHapticDiagnostics(it) },
                     testTag = "toggle_dev_haptic_diag"
+                )
+            }
+
+            // TOGGLE 4: Parking Timer Feature
+            item {
+                DeveloperOptionToggleItem(
+                    title = "Parking Timer Feature",
+                    subtitle = "Enable the parking timer UI across the app for tracking meter expiry.",
+                    icon = Icons.Default.Timer,
+                    checked = isParkingTimerEnabled,
+                    onCheckedChange = { viewModel.setParkingTimerFeatureEnabled(it) },
+                    testTag = "toggle_dev_parking_timer"
                 )
             }
         }

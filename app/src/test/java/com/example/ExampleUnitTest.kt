@@ -1,7 +1,9 @@
 package com.example
 
 import com.example.sensor.LocationHelper
+import com.example.sensor.SunCalculator
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -42,5 +44,13 @@ class ExampleUnitTest {
 
         val distLong = LocationHelper.formatDistance(1500f)
         assertEquals("1.5 km", distLong)
+    }
+
+    @Test
+    fun testSunCalculator() {
+        val times = SunCalculator.getSunTimes(37.9838, 23.7275) // Athens, Greece
+        assertTrue(times.sunriseTimestampMillis > 0)
+        assertTrue(times.sunsetTimestampMillis > 0)
+        assertTrue(times.sunsetTimestampMillis > times.sunriseTimestampMillis)
     }
 }

@@ -13,6 +13,9 @@ interface BluetoothCarDeviceDao {
     @Query("SELECT * FROM bluetooth_devices ORDER BY lastConnectedTimestamp DESC")
     fun getAllDevices(): Flow<List<BluetoothCarDevice>>
 
+    @Query("SELECT * FROM bluetooth_devices ORDER BY lastConnectedTimestamp DESC")
+    suspend fun getAllDevicesDirect(): List<BluetoothCarDevice>
+
     @Query("SELECT * FROM bluetooth_devices WHERE isMonitoredCar = 1")
     fun getMonitoredDevices(): Flow<List<BluetoothCarDevice>>
 
@@ -25,16 +28,16 @@ interface BluetoothCarDeviceDao {
     @Query("UPDATE bluetooth_devices SET isMonitoredCar = 0")
     suspend fun clearAllMonitoredStatus()
 
-    @Query("UPDATE bluetooth_devices SET isMonitoredCar = 1 WHERE address = :address")
+    @Query("UPDATE bluetooth_devices SET isMonitoredCar = 1 WHERE UPPER(address) = UPPER(:address)")
     suspend fun setSoleMonitoredDevice(address: String)
 
-    @Query("SELECT * FROM bluetooth_devices WHERE address = :address")
+    @Query("SELECT * FROM bluetooth_devices WHERE UPPER(address) = UPPER(:address) LIMIT 1")
     suspend fun getDeviceByAddress(address: String): BluetoothCarDevice?
 
-    @Query("UPDATE bluetooth_devices SET name = :name, isCustomRenamed = 1 WHERE address = :address")
+    @Query("UPDATE bluetooth_devices SET name = :name, isCustomRenamed = 1 WHERE UPPER(address) = UPPER(:address)")
     suspend fun updateDeviceName(address: String, name: String)
 
-    @Query("UPDATE bluetooth_devices SET isMonitoredCar = :isMonitored WHERE address = :address")
+    @Query("UPDATE bluetooth_devices SET isMonitoredCar = :isMonitored WHERE UPPER(address) = UPPER(:address)")
     suspend fun setDeviceMonitoredState(address: String, isMonitored: Boolean)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -43,6 +46,6 @@ interface BluetoothCarDeviceDao {
     @Update
     suspend fun update(device: BluetoothCarDevice)
 
-    @Query("DELETE FROM bluetooth_devices WHERE address = :address")
+    @Query("DELETE FROM bluetooth_devices WHERE UPPER(address) = UPPER(:address)")
     suspend fun deleteDevice(address: String)
 }

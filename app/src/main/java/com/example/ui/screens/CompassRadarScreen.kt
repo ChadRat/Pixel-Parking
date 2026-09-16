@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Share
@@ -52,6 +53,8 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.components.ParkingTimerButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -98,6 +101,10 @@ fun CompassRadarScreen(
     var showNoSpotAlert by remember { mutableStateOf(false) }
     var showCalibrationDialog by remember { mutableStateOf(false) }
     var currentNoteText by remember { mutableStateOf(activeSpot?.note ?: "") }
+
+    val isTimerRunning by viewModel.timerIsRunning.collectAsStateWithLifecycle()
+    val timerRemainingSeconds by viewModel.timerRemainingSeconds.collectAsStateWithLifecycle()
+    val isParkingTimerEnabled by viewModel.isParkingTimerFeatureEnabled.collectAsStateWithLifecycle()
 
     DisposableEffect(Unit) {
         viewModel.startCompass()
@@ -160,12 +167,12 @@ fun CompassRadarScreen(
     val isDeviceRenamed = associatedDevice?.isCustomRenamed == true && associatedDevice.name.isNotBlank()
 
     // Dynamic proximity status title matching Google Find My Device UI
-    val proximityStatus = if (isBtMode) {
+    val proximityStatus: String? = if (isBtMode) {
         when {
             btRssi >= -45 -> strings.carIsHere
             btRssi >= -60 -> strings.carVeryClose
             btRssi >= -75 -> strings.walkInThisDirection
-            else -> strings.waypointRadarSubtitle
+            else -> null
         }
     } else when {
         activeSpot == null -> strings.noSpotsFound
@@ -174,7 +181,7 @@ fun CompassRadarScreen(
         telemetry.distanceMeters <= 8.0f -> strings.carVeryClose
         telemetry.distanceMeters <= 20.0f -> strings.walkInThisDirection
         telemetry.distanceMeters <= 45.0f -> strings.alignPhone
-        else -> strings.waypointRadarSubtitle
+        else -> null
     }
 
     val isCarHereOrVeryClose = if (isBtMode) {
@@ -462,20 +469,21 @@ fun CompassRadarScreen(
                 modifier = Modifier.testTag("waypoint_meters_text")
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
-
             // PROXIMITY STATUS (Sits below the meters left number, e.g. "Car is right here")
-            Text(
-                text = proximityStatus,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = if (telemetry.distanceMeters <= 5.0f && telemetry.hasActiveTarget) {
-                    PixelGreen
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
-                textAlign = TextAlign.Center
-            )
+            if (!proximityStatus.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = proximityStatus,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (telemetry.distanceMeters <= 5.0f && telemetry.hasActiveTarget) {
+                        PixelGreen
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    textAlign = TextAlign.Center
+                )
+            }
 
             Spacer(modifier = Modifier.height(6.dp))
 
@@ -528,6 +536,16 @@ fun CompassRadarScreen(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // Blue Parking Timer button: same size as Found Car button, sits just above it
+                if ((activeSpot != null || telemetry.hasActiveTarget) && isParkingTimerEnabled) {
+                    ParkingTimerButton(
+                        isRunning = isTimerRunning,
+                        remainingSeconds = timerRemainingSeconds,
+                        onClick = { viewModel.openParkingTimer() },
+                        isFullWidth = false
+                    )
+                }
+
                 // Dynamically shows when user is 50m or less from parked spot
                 AnimatedVisibility(
                     visible = activeSpot != null && telemetry.hasActiveTarget && telemetry.distanceMeters <= 50.0f,
@@ -582,7 +600,7 @@ fun CompassRadarScreen(
                         .testTag("waypoint_maps_button")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Navigation,
+                        imageVector = Icons.Default.Map,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )

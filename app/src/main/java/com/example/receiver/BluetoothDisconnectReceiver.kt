@@ -50,12 +50,18 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                         db.bluetoothCarDeviceDao()
                     )
 
-                    // Strictly check if this device is the one specific selected car device
-                    val isMonitored = repository.isDeviceMonitored(deviceAddress)
+                    // Find registered device in database (checks case-insensitively by MAC address)
+                    val savedDevice = repository.getDeviceByAddress(deviceAddress)
+
+                    // Strictly check if this device is monitored
+                    val isMonitored = savedDevice?.isMonitoredCar == true || repository.isDeviceMonitored(deviceAddress)
                     if (!isMonitored) {
                         Log.d("BluetoothReceiver", "Ignored disconnect from unselected device: $deviceAddress ($deviceName)")
                         return@launch
                     }
+
+                    // Use the custom renamed vehicle name if set, otherwise fallback to raw/system name
+                    val effectiveDeviceName = savedDevice?.name?.ifBlank { null } ?: deviceName
 
                     // Grab exact current GPS location
                     val location = LocationHelper.getCurrentLocation(context)
@@ -77,12 +83,12 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                         altitude = alt,
                         accuracyMeters = accuracy,
                         address = address,
-                        spotName = "$deviceName Parking Spot",
+                        spotName = "$effectiveDeviceName Parking Spot",
                         floorLevel = "Ground Level",
                         note = "Automatically saved upon Bluetooth disconnection.",
                         timestamp = System.currentTimeMillis(),
                         isAutoSaved = true,
-                        bluetoothDeviceName = deviceName,
+                        bluetoothDeviceName = effectiveDeviceName,
                         bluetoothDeviceAddress = deviceAddress,
                         meterExpiryTimestamp = null,
                         isActive = true
@@ -93,7 +99,7 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
 
                     // Show rich notification with instant navigation actions
                     ParkingNotificationHelper.showCarParkedNotification(context, savedSpot)
-                    Log.d("BluetoothReceiver", "Saved auto-park spot at $lat, $lng with id: $newId")
+                    Log.d("BluetoothReceiver", "Saved auto-park spot for '$effectiveDeviceName' at $lat, $lng with id: $newId")
                 } catch (e: Exception) {
                     Log.e("BluetoothReceiver", "Error saving auto-park spot", e)
                 } finally {
