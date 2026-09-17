@@ -300,37 +300,51 @@ object HapticHelper {
                 )
             ) {
                 val comp = VibrationEffect.startComposition()
-                // Tooth contact clicks matching each of the 6 teeth passing contact at:
-                // 0ms (tooth 1), 160ms (tooth 2), 370ms (tooth 3), 660ms (tooth 4), 1080ms (tooth 5), 1680ms (tooth 6)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f, 0)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f, 160)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f, 210)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f, 290)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f, 420)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f, 600)
+                // Exactly 6 mechanical tooth clicks + 1 final settling tick synchronized to the gear rotation:
+                // 1. Initial mechanical pickup as inertia turns the gear to ~50°
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.85f, 365)
+                // 2. Rapid accelerating tooth engagement leading into peak rotational speed (149ms interval)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.95f, 149)
+                // 3. Peak angular velocity tooth click at ~195° (157ms interval)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f, 157)
+                // 4. Deceleration tooth click as visual rotation noticeably slows at ~265° (199ms interval)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.95f, 199)
+                // 5. Progressively slowed down tooth engagement at ~325° (288ms interval)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.9f, 288)
+                // 6. Soft slowed-down tooth contact as the gear reaches ~358° (480ms interval)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.8f, 480)
+                // 7. Final settling tick as the gear smoothly clicks into place returning to its starting position at 360° / 2000ms
+                val finalPrimitive = if (vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK)) {
+                    VibrationEffect.Composition.PRIMITIVE_TICK
+                } else {
+                    VibrationEffect.Composition.PRIMITIVE_CLICK
+                }
+                comp.addPrimitive(finalPrimitive, 0.85f, 330)
                 vibrator.vibrate(comp.compose())
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // Waveform of sharp, ultra-strong clicks with increasing intervals as rotation slows down:
+                // Waveform of mechanical clicks ending with a final tick as the gear settles into start position:
                 val timings = longArrayOf(
-                    0,   26,  // Tooth 1 (0ms)
-                    134, 26,  // Tooth 2 (160ms)
-                    184, 26,  // Tooth 3 (370ms)
-                    264, 26,  // Tooth 4 (660ms)
-                    394, 26,  // Tooth 5 (1080ms)
-                    574, 28   // Tooth 6 (1680ms)
+                    365, 18,
+                    131, 18,
+                    139, 18,
+                    181, 18,
+                    270, 18,
+                    462, 22,
+                    328, 12
                 )
                 val amplitudes = intArrayOf(
+                    0,   220,
+                    0,   245,
                     0,   255,
-                    0,   255,
-                    0,   255,
-                    0,   255,
-                    0,   255,
-                    0,   255
+                    0,   245,
+                    0,   225,
+                    0,   200,
+                    0,   180
                 )
                 vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(longArrayOf(0, 25, 135, 25, 185, 25, 265, 25, 395, 25, 575, 25), -1)
+                vibrator.vibrate(longArrayOf(365, 18, 131, 18, 139, 18, 181, 18, 270, 18, 462, 22, 328, 12), -1)
             }
         } catch (_: Exception) {}
     }

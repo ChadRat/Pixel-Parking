@@ -100,6 +100,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -129,6 +130,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        com.example.util.UpdateManager.scheduleDailyUpdateCheck(this)
+        com.example.util.UpdateManager.checkForUpdates(this, isAutomatic = true, language = viewModel.appLanguage.value)
 
         handleIntent(intent)
 
@@ -164,6 +168,10 @@ class MainActivity : ComponentActivity() {
         val action = intent?.getStringExtra("action")
         if (action == "open_radar") {
             viewModel.selectTab(AppTab.COMPASS_RADAR)
+        }
+        
+        if (intent?.action == android.service.quicksettings.TileService.ACTION_QS_TILE_PREFERENCES) {
+            viewModel.handleQsTileLongPress()
         }
     }
 }
@@ -489,6 +497,32 @@ data class NavItem(
     val testTag: String
 )
 
+/**
+ * Realistic drop shadow for the floating navigation components.
+ * - Hardware-accelerated Gaussian penumbra with zero rough, stepped, or sharp edges.
+ * - Directionally cast downwards below the navigation bar with subtle, natural side penumbra.
+ * - Layered ambient and spot occlusion for a noticeably darker, deeper, and grounded presence.
+ * - Active in both light mode and dark mode.
+ */
+private fun Modifier.navBarRealisticShadow(
+    isDark: Boolean,
+    elevation: Dp = 12.dp
+): Modifier = this
+    .shadow(
+        elevation = 5.dp,
+        shape = CircleShape,
+        spotColor = if (isDark) Color.Black else Color.Black.copy(alpha = 0.88f),
+        ambientColor = if (isDark) Color.Black.copy(alpha = 0.65f) else Color.Black.copy(alpha = 0.50f),
+        clip = false
+    )
+    .shadow(
+        elevation = elevation,
+        shape = CircleShape,
+        spotColor = if (isDark) Color.Black else Color.Black.copy(alpha = 0.95f),
+        ambientColor = if (isDark) Color.Black.copy(alpha = 0.70f) else Color.Black.copy(alpha = 0.55f),
+        clip = false
+    )
+
 @Composable
 fun PixelFloatingBottomNavBar(
     selectedTab: AppTab,
@@ -528,7 +562,7 @@ fun PixelFloatingBottomNavBar(
 
     val navBarContainerBg = if (isOled) Color(0xFF141414) else MaterialTheme.colorScheme.surfaceContainerHigh
     val navSelectedBg = MaterialTheme.colorScheme.primary
-    val navSelectedContent = MaterialTheme.colorScheme.onPrimary
+    val navSelectedContent = if (!isDark) Color(0xFF000000) else MaterialTheme.colorScheme.onPrimary
     val navUnselectedContent = MaterialTheme.colorScheme.onSurfaceVariant
     val navBorder = if (isDark) {
         if (isOled) BorderStroke(1.dp, Color(0xFF242424)) else null
@@ -548,23 +582,17 @@ fun PixelFloatingBottomNavBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Main Pill Capsule Container: Opaque background with 3D drop shadow in light & dark mode
+            // Main Pill Capsule Container: Opaque background with smooth realistic drop shadow in light & dark mode
             Surface(
                 shape = CircleShape,
                 color = navBarContainerBg,
                 border = navBorder,
-                shadowElevation = 10.dp,
-                tonalElevation = 2.dp,
+                shadowElevation = 0.dp,
+                tonalElevation = 0.dp,
                 modifier = Modifier
-                    .shadow(
-                        elevation = 12.dp,
-                        shape = CircleShape,
-                        spotColor = Color.Black.copy(alpha = if (isDark) 0.65f else 0.30f),
-                        ambientColor = Color.Black.copy(alpha = if (isDark) 0.45f else 0.20f)
-                    )
+                    .navBarRealisticShadow(isDark = isDark)
                     .wrapContentWidth()
                     .height(48.dp)
-                    .clip(CircleShape)
             ) {
                 Row(
                     modifier = Modifier
@@ -702,17 +730,11 @@ fun PixelFloatingBottomNavBar(
                 shape = CircleShape,
                 color = settingsBg,
                 border = if (isSettingsSelected) null else navBorder,
-                shadowElevation = 10.dp,
-                tonalElevation = 2.dp,
+                shadowElevation = 0.dp,
+                tonalElevation = 0.dp,
                 modifier = Modifier
-                    .shadow(
-                        elevation = 12.dp,
-                        shape = CircleShape,
-                        spotColor = Color.Black.copy(alpha = if (isDark) 0.65f else 0.30f),
-                        ambientColor = Color.Black.copy(alpha = if (isDark) 0.45f else 0.20f)
-                    )
+                    .navBarRealisticShadow(isDark = isDark)
                     .size(48.dp)
-                    .clip(CircleShape)
                     .clickable {
                         animTriggerSettings.intValue++
                         onSelectTab(AppTab.SETTINGS)

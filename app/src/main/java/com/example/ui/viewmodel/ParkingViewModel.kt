@@ -416,6 +416,17 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         return false
     }
 
+    fun handleQsTileLongPress() {
+        viewModelScope.launch {
+            val active = repository.getActiveSpotDirect()
+            if (active != null && active.isActive) {
+                selectTab(AppTab.COMPASS_RADAR)
+            } else {
+                selectTab(AppTab.HISTORY)
+            }
+        }
+    }
+
     val canNavigateBack: Boolean
         get() = tabBackStack.isNotEmpty() || _selectedTab.value != AppTab.DASHBOARD
 
@@ -1116,6 +1127,10 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
 
     fun refreshAlarmTitle() {
         _alarmSoundTitle.value = com.example.util.AlarmSoundHelper.getAlarmTitle(getApplication())
+    }
+
+    fun checkForUpdates(context: Context) {
+        com.example.util.UpdateManager.checkForUpdates(context, isAutomatic = false, language = _appLanguage.value)
     }
 
     override fun onCleared() {

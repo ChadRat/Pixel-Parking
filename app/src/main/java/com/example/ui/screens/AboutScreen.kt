@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
@@ -33,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -56,11 +59,12 @@ fun AboutScreen(
     val context = LocalContext.current
     val strings = LocalAppStrings.current
     var showLicenseDetail by remember { mutableStateOf(false) }
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black) // Force OLED Black as shown in the screenshot
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
@@ -69,7 +73,8 @@ fun AboutScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 20.dp),
+                    .padding(horizontal = 20.dp)
+                    .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Header (Back Arrow + Title + Subtitle)
@@ -83,12 +88,12 @@ fun AboutScreen(
                         onClick = onBack,
                         modifier = Modifier
                             .size(48.dp)
-                            .background(Color(0xFF1C1C1E), CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = Color.White
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
 
@@ -99,7 +104,7 @@ fun AboutScreen(
                             text = strings.aboutTitle,
                             fontSize = 32.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                     }
                 }
@@ -110,13 +115,16 @@ fun AboutScreen(
                 Box(
                     modifier = Modifier
                         .size(100.dp)
-                        .background(Color(0xFF382F13), RoundedCornerShape(28.dp)), // Dark brownish gold squircle
+                        .background(
+                            if (isDark) Color(0xFF382F13) else MaterialTheme.colorScheme.primaryContainer,
+                            RoundedCornerShape(28.dp)
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.DirectionsCar,
                         contentDescription = "App Icon",
-                        tint = Color(0xFFFFD54F),
+                        tint = if (isDark) Color(0xFFFFD54F) else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(54.dp)
                     )
                 }
@@ -128,7 +136,7 @@ fun AboutScreen(
                     text = strings.appName,
                     fontSize = 26.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -136,7 +144,7 @@ fun AboutScreen(
                 Text(
                     text = "Version ${BuildConfig.VERSION_NAME}",
                     fontSize = 14.sp,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Medium
                 )
 
@@ -147,7 +155,7 @@ fun AboutScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(28.dp)),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF121212)), // High contrast dark grey card
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     shape = RoundedCornerShape(28.dp)
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
@@ -171,12 +179,15 @@ fun AboutScreen(
                             Box(
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .background(Color(0xFF1A365D), CircleShape), // Dark blue circular background
+                                    .background(
+                                        if (isDark) Color(0xFF1A365D) else Color(0xFFD0E4FF),
+                                        CircleShape
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = "Code",
-                                    color = Color.White,
+                                    color = if (isDark) Color.White else Color(0xFF001D36),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -189,12 +200,12 @@ fun AboutScreen(
                                     text = strings.sourceCodeGitHub,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color.White
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = strings.sourceCodeSubtitle,
                                     fontSize = 13.sp,
-                                    color = Color.Gray,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -203,14 +214,14 @@ fun AboutScreen(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
                                 contentDescription = null,
-                                tint = Color.Gray,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
 
                         // Squiggly/Wavy Divider (Big & Thick)
                         WavyDivider(
-                            color = Color(0xFF2C2C2E),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
                             waveLength = 36f,
                             amplitude = 9f,
                             thickness = 6f
@@ -234,13 +245,16 @@ fun AboutScreen(
                             Box(
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .background(Color(0xFF2A3439), CircleShape), // Slate-grey/blue circular background
+                                    .background(
+                                        if (isDark) Color(0xFF2A3439) else Color(0xFFD8E3EA),
+                                        CircleShape
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.BugReport,
                                     contentDescription = null,
-                                    tint = Color.White,
+                                    tint = if (isDark) Color.White else Color(0xFF2B373C),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -252,12 +266,12 @@ fun AboutScreen(
                                     text = strings.reportAnIssueTitle,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color.White
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = strings.reportAnIssueUrl,
                                     fontSize = 13.sp,
-                                    color = Color.Gray,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -266,14 +280,14 @@ fun AboutScreen(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
                                 contentDescription = null,
-                                tint = Color.Gray,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
 
                         // Squiggly/Wavy Divider (Big & Thick)
                         WavyDivider(
-                            color = Color(0xFF2C2C2E),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
                             waveLength = 36f,
                             amplitude = 9f,
                             thickness = 6f
@@ -293,13 +307,16 @@ fun AboutScreen(
                             Box(
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .background(Color(0xFF233E3B), CircleShape), // Dark teal circular background
+                                    .background(
+                                        if (isDark) Color(0xFF233E3B) else Color(0xFFCCE8E3),
+                                        CircleShape
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Gavel,
                                     contentDescription = null,
-                                    tint = Color.White,
+                                    tint = if (isDark) Color.White else Color(0xFF003831),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -311,12 +328,12 @@ fun AboutScreen(
                                     text = strings.licenseTitle,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color.White
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = strings.licenseSubtitle,
                                     fontSize = 13.sp,
-                                    color = Color.Gray,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -325,8 +342,55 @@ fun AboutScreen(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
                                 contentDescription = null,
-                                tint = Color.Gray,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                // Check for Updates Button
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 32.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDark) Color(0xFF1B2824) else MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            viewModel.checkForUpdates(context)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(72.dp)
+                            .padding(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isDark) Color(0xFF8BD4C9) else MaterialTheme.colorScheme.primary,
+                            contentColor = if (isDark) Color(0xFF04483E) else MaterialTheme.colorScheme.onPrimary
+                        ),
+                        shape = RoundedCornerShape(36.dp),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SystemUpdate,
+                                contentDescription = strings.checkForUpdates,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = strings.checkForUpdates,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.SansSerif
                             )
                         }
                     }
@@ -355,14 +419,14 @@ fun AboutScreen(
                             text = strings.licenseTitle,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onBackground,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = "GNU General Public License v3.0",
                             fontSize = 13.sp,
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -371,12 +435,12 @@ fun AboutScreen(
                         onClick = { showLicenseDetail = false },
                         modifier = Modifier
                             .size(48.dp)
-                            .background(Color(0xFF1C1C1E), CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Close",
-                            tint = Color.White
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -395,8 +459,8 @@ fun AboutScreen(
                             Toast.makeText(context, "License copied to clipboard", Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF1F2937),
-                            contentColor = Color.White
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
                         ),
                         shape = RoundedCornerShape(20.dp),
                         modifier = Modifier.weight(1f).height(50.dp)
@@ -420,10 +484,10 @@ fun AboutScreen(
                             }
                         },
                         colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color.White
+                            contentColor = MaterialTheme.colorScheme.primary
                         ),
                         shape = RoundedCornerShape(20.dp),
-                        border = ButtonDefaults.outlinedButtonBorder(enabled = true),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         modifier = Modifier.weight(1f).height(50.dp)
                     ) {
                         Icon(
@@ -444,7 +508,7 @@ fun AboutScreen(
                         .fillMaxWidth()
                         .weight(1f)
                         .padding(bottom = 24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF121212)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     shape = RoundedCornerShape(24.dp)
                 ) {
                     Column(
@@ -458,13 +522,13 @@ fun AboutScreen(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = "Version 3, 29 June 2007",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 12.sp,
-                            color = Color.LightGray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
                         )
 
@@ -473,7 +537,7 @@ fun AboutScreen(
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             lineHeight = 16.sp,
-                            color = Color.LightGray
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

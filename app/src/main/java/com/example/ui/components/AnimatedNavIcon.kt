@@ -100,11 +100,12 @@ fun AnimatedNavIcon(
                 }
             }
 
-            // Run 2.0-second organic animation (0ms to 2000ms)
+            // Run organic animation (2000ms for all tabs including slow mechanical spin for Settings gear)
+            val duration = 2000
             animMillis.snapTo(0f)
             animMillis.animateTo(
-                targetValue = 2000f,
-                animationSpec = tween(durationMillis = 2000, easing = LinearEasing)
+                targetValue = duration.toFloat(),
+                animationSpec = tween(durationMillis = duration, easing = LinearEasing)
             )
         }
     }
@@ -204,12 +205,10 @@ private fun CarDashboardNavIcon(
             modifier = Modifier.size(size)
         )
 
-        // Headlight circles flash (change color) white/yellow twice - NO beam cone
+        // Headlight circles flash white twice like high-beam flashing - NO beam cone
         if (flashIntensity > 0f) {
-            val surfaceColor = androidx.compose.material3.MaterialTheme.colorScheme.surface
-            val isDark = surfaceColor.red * 0.299f + surfaceColor.green * 0.587f + surfaceColor.blue * 0.114f < 0.5f
-            val baseColor = if (isDark) Color.White else Color.Yellow
-            val auraColor = if (isDark) Color(0xFFE0F7FA) else Color(0xFFFFF59D)
+            val baseColor = Color.White
+            val auraColor = Color(0xFFE0F7FA)
             
             Canvas(modifier = Modifier.size(size)) {
                 val w = this.size.width
@@ -578,20 +577,53 @@ fun FullGearNavIcon(
     ms: Float = 0f,
     size: Dp = 24.dp
 ) {
-    // Rotation curve: Smooth continuous deceleration (slows down organically to 360°)
+    // Rotation curve: Starts acceleration slowly with mechanical inertia, progressively ramps up
+    // to peak rotational speed (around ~560ms), smoothly decelerates, and as it reaches its starting point (360°),
+    // performs a tiny mechanical bounce (gentle overshoot and springy recoil) before settling into rest.
+    val gearDuration = 2000f
     val rotation = when {
-        ms <= 0f || ms >= 2000f -> 0f
+        ms <= 0f || ms >= gearDuration -> 0f
         else -> {
-            val p = (ms / 2000f).coerceIn(0f, 1f)
-            val easeOut = 1f - Math.pow((1.0 - p.toDouble()), 2.3).toFloat()
-            360f * easeOut
+            val t = (ms / gearDuration).coerceIn(0f, 1f)
+            val t0 = 0.28f
+            val k = 2.4f
+            val totalRotation = 360f
+            val areaFactor = (t0 / 2f) + ((1f - t0) / (k + 1f))
+            val vPeak = totalRotation / areaFactor
+            val baseRotation = if (t <= t0) {
+                // Acceleration phase: starts slowly with gentle mechanical inertia (quintic smooth onset),
+                // building up to peak rotational speed at t0
+                val p = t / t0
+                // Integral of smootherstep 6*p^5 - 15*p^4 + 10*p^3:
+                // integral = p^4 * (p^2 - 3p + 2.5), which reaches 0.5 at p = 1.0
+                val accelProgress = p * p * p * p * (p * p - 3f * p + 2.5f)
+                vPeak * t0 * accelProgress
+            } else {
+                // Deceleration phase: smoothly decelerates from vPeak to 0 velocity, stopping gently at 360°
+                val a1 = vPeak * (t0 / 2f)
+                val remainingRatio = (1f - t) / (1f - t0)
+                val decelIntegral = ((1f - t0) / (k + 1f)) * (1f - Math.pow(remainingRatio.toDouble(), (k + 1.0)).toFloat())
+                a1 + vPeak * decelIntegral
+            }
+
+            // Tiny mechanical rotational bounce as the gear returns to starting position (1650ms - 2000ms):
+            // Softly overshoots past 360° by ~3.7°, then recoils back to settle cleanly at 360° (0°) resting position.
+            val bounce = if (ms >= 1650f) {
+                val tb = (ms - 1650f) / 350f
+                (14f * kotlin.math.sin(tb * 1.7f * Math.PI.toFloat()) * (1f - tb) * Math.pow(tb.toDouble(), 0.7).toFloat())
+            } else {
+                0f
+            }
+            baseRotation + bounce
         }
     }
 
     Box(
         modifier = Modifier
             .size(size)
-            .graphicsLayer { rotationZ = rotation },
+            .graphicsLayer {
+                rotationZ = rotation
+            },
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.size(size)) {
