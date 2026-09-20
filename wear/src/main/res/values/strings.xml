@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pixel Parking</string>
+    <string name="open_in_google_maps">Open in Google Maps</string>
+    <string name="no_parking_spot">No Active Parking Spot</string>
+</resources>

@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 rootProject.name = "Pixel Parking"
 
 include(":app")
+include(":wear")

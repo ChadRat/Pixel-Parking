@@ -63,6 +63,10 @@ class ParkingRepository(
         parkingSpotDao.clearAllSpots()
     }
 
+    suspend fun deactivateActiveSpot() {
+        parkingSpotDao.deactivateAllSpots()
+    }
+
     suspend fun getAllDevicesDirect(): List<BluetoothCarDevice> {
         return bluetoothCarDeviceDao.getAllDevicesDirect()
     }

@@ -22,6 +22,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -69,8 +71,10 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Wallpaper
+import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.WbTwilight
+import androidx.compose.ui.draw.rotate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -138,8 +142,12 @@ fun SettingsScreen(
     val currentLanguage by viewModel.appLanguage.collectAsState()
     val alarmSoundTitle by viewModel.alarmSoundTitle.collectAsState()
     val isParkingTimerEnabled by viewModel.isParkingTimerFeatureEnabled.collectAsState()
+    val activeSpot by viewModel.activeSpot.collectAsState()
+    val telemetry by viewModel.navigationTelemetry.collectAsState()
+    val isCrownOnRight by viewModel.wearCrownOnRight.collectAsState()
 
     var isAlarmPreviewing by remember { mutableStateOf(false) }
+    var isCrownOptionsExpanded by remember { mutableStateOf(false) }
 
     val ringtonePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -1047,6 +1055,187 @@ fun SettingsScreen(
                 thickness = 6f
             )
         }
+        }
+
+        // ==========================================
+        // 5. WEAR OS COMPANION / ΣΥΝΟΔΟΣ WEAR OS
+        // ==========================================
+        item {
+            val arrowRotation by animateFloatAsState(
+                targetValue = if (isCrownOptionsExpanded) 180f else 0f,
+                animationSpec = tween(durationMillis = 250),
+                label = "arrow_rotation"
+            )
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("wear_os_companion_card"),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                isCrownOptionsExpanded = !isCrownOptionsExpanded
+                                viewModel.triggerWearSync()
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier.size(54.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Watch,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+                            }
+
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = strings.wearOsCompanionTitle,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = strings.wearOsCompanionDesc,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = if (isCrownOptionsExpanded) "Collapse" else "Expand",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .size(24.dp)
+                                .rotate(arrowRotation)
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = isCrownOptionsExpanded,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                thickness = 1.dp
+                            )
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Crown orientation option header
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = strings.wearOsCrownOrientationTitle,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = strings.wearOsCrownOrientationDesc,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 16.sp
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Crown Left vs Crown Right selection chips matching ThemeOptionChip UI
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                ThemeOptionChip(
+                                    title = strings.wearOsCrownRight,
+                                    icon = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                                    isSelected = isCrownOnRight,
+                                    onClick = { viewModel.setWearCrownOnRight(true) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                ThemeOptionChip(
+                                    title = strings.wearOsCrownLeft,
+                                    icon = Icons.AutoMirrored.Filled.ArrowBackIos,
+                                    isSelected = !isCrownOnRight,
+                                    onClick = { viewModel.setWearCrownOnRight(false) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Note stating that APK can be accessed from About page
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DirectionsCar,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = strings.wearOsApkDirectAboutNote,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 15.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            WavyDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                waveLength = 36f,
+                amplitude = 9f,
+                thickness = 6f
+            )
         }
 
         // ==========================================

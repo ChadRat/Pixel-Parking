@@ -38,6 +38,7 @@ import com.example.ui.theme.AppThemeMode
 import com.example.util.BluetoothDeviceHelper
 import com.example.util.HapticHelper
 import com.example.util.HapticProfile
+import com.example.wear.WearDataLayerBridge
 import com.google.android.gms.location.LocationCallback
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
@@ -129,6 +130,9 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
 
     val currentStrings: AppStrings
         get() = getAppStrings(_appLanguage.value)
+
+    private val _wearCrownOnRight = MutableStateFlow(prefs.getBoolean("wear_crown_on_right", true))
+    val wearCrownOnRight: StateFlow<Boolean> = _wearCrownOnRight.asStateFlow()
 
     private val _hapticProfile = MutableStateFlow(
         try {
@@ -304,6 +308,16 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
                 compassSensorManager.setTargetBearing(bearing)
             }
 
+            val isAligned = kotlin.math.abs(relativeAngle) < 15f || relativeAngle > 345f
+            if (spot != null && spot.isActive) {
+                wearDataLayerBridge.syncLiveTelemetry(
+                    distanceMeters = dist,
+                    targetBearing = bearing,
+                    relativeArrowAngle = relativeAngle,
+                    isAligned = isAligned
+                )
+            }
+
             NavigationTelemetry(
                 distanceMeters = dist,
                 formattedDistance = LocationHelper.formatDistance(dist),
@@ -319,18 +333,37 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         NavigationTelemetry(0f, "--", 0f, 0f, 0.0, false)
     )
 
+    private val wearDataLayerBridge = WearDataLayerBridge.getInstance(application)
+
     init {
         compassSensorManager.hapticProfile = _hapticProfile.value
         startLocationTracking()
         refreshCurrentLocation()
         syncSystemPairedDevices()
         updateDaytimeState()
+
+        viewModelScope.launch {
+            activeSpot.collect { spot ->
+                wearDataLayerBridge.syncParkingSpot(spot)
+            }
+        }
+
+        viewModelScope.launch {
+            wearCrownOnRight.collect { onRight ->
+                wearDataLayerBridge.syncCrownPosition(onRight)
+            }
+        }
+
         viewModelScope.launch {
             while (isActive) {
                 updateDaytimeState()
                 kotlinx.coroutines.delay(60_000L)
             }
         }
+    }
+
+    fun triggerWearSync() {
+        wearDataLayerBridge.syncParkingSpot(activeSpot.value)
     }
 
     fun startLocationTracking() {
@@ -385,6 +418,12 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     fun setDynamicColor(enabled: Boolean) {
         _dynamicColor.value = enabled
         prefs.edit().putBoolean("dynamic_color", enabled).apply()
+    }
+
+    fun setWearCrownOnRight(onRight: Boolean) {
+        _wearCrownOnRight.value = onRight
+        prefs.edit().putBoolean("wear_crown_on_right", onRight).apply()
+        wearDataLayerBridge.syncCrownPosition(onRight)
     }
 
 

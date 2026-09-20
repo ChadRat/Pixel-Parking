@@ -2061,29 +2061,27 @@ private fun DrawScope.drawCapyHappyCar(
     }
     drawPath(bodyPath, color = Color(0xFFE53935))
 
-    // Car Roof / Pillar with OPEN window
-    val roofPillar = Path().apply {
+    // Cabrio Front Windshield (A-pillar in front of driver - roof behind removed for open-top cabrio)
+    val windshieldPillar = Path().apply {
         moveTo(cx - w * 0.20f, cy - h * 0.18f)
-        lineTo(cx - w * 0.06f, cy - h * 0.62f)
-        cubicTo(cx, cy - h * 0.66f, cx + w * 0.20f, cy - h * 0.66f, cx + w * 0.24f, cy - h * 0.60f)
-        lineTo(cx + w * 0.35f, cy - h * 0.18f)
-        lineTo(cx + w * 0.28f, cy - h * 0.18f)
-        lineTo(cx + w * 0.20f, cy - h * 0.56f)
+        lineTo(cx - w * 0.06f, cy - h * 0.60f)
+        lineTo(cx - w * 0.01f, cy - h * 0.58f)
+        lineTo(cx - w * 0.14f, cy - h * 0.18f)
+        close()
+    }
+    drawPath(windshieldPillar, color = Color(0xFFC62828))
+
+    // Cabrio Windshield Glass (Light tint)
+    val windshieldGlass = Path().apply {
+        moveTo(cx - w * 0.18f, cy - h * 0.18f)
+        lineTo(cx - w * 0.06f, cy - h * 0.58f)
         lineTo(cx - w * 0.02f, cy - h * 0.56f)
         lineTo(cx - w * 0.14f, cy - h * 0.18f)
         close()
     }
-    drawPath(roofPillar, color = Color(0xFFC62828))
+    drawPath(windshieldGlass, color = Color(0x55FAF4EB))
 
-    // Interior cabin backdrop (behind open window)
-    drawRoundRect(
-        color = Color(0xFF6B452A),
-        topLeft = Offset(cx - w * 0.14f, cy - h * 0.54f),
-        size = Size(w * 0.42f, h * 0.36f),
-        cornerRadius = CornerRadius(6f, 6f)
-    )
-
-    // HAPPY & SERENE CAPYBARA DRIVER (Visible from Open Car Window)
+    // HAPPY & SERENE CAPYBARA DRIVER (Visible in Open-Air Cabrio)
     val capyX = cx + w * 0.04f
     val capyY = cy - h * 0.32f
 
@@ -2433,6 +2431,27 @@ private fun DrawScope.drawCapyCoolGlassesCar(
         center = Offset(cx - w * 0.10f, cy - h * 0.02f)
     )
 
+    // Supercar Front Headlight (Unlit, off, no beam)
+    val supercarHeadlight = Path().apply {
+        moveTo(cx - w * 0.46f, cy + h * 0.02f)
+        lineTo(cx - w * 0.43f, cy - h * 0.02f)
+        lineTo(cx - w * 0.33f, cy - h * 0.10f)
+        lineTo(cx - w * 0.35f, cy - h * 0.03f)
+        close()
+    }
+    drawPath(supercarHeadlight, color = Color(0xFFECEFF1))
+    drawPath(supercarHeadlight, color = Color(0xFFE65100), style = Stroke(width = 1.4f))
+    drawCircle(
+        color = Color(0xFF78909C),
+        radius = h * 0.026f,
+        center = Offset(cx - w * 0.38f, cy - h * 0.04f)
+    )
+    drawCircle(
+        color = Color(0xFF37474F),
+        radius = h * 0.014f,
+        center = Offset(cx - w * 0.38f, cy - h * 0.04f)
+    )
+
     // Wheels
     listOf(frontWheelX, rearWheelX).forEach { wx ->
         drawCircle(color = Color(0xFF1C1C1C), radius = wheelRadius, center = Offset(wx, wheelY))
@@ -2484,6 +2503,27 @@ private fun DrawScope.drawCapyTintedWindowSUV(
         close()
     }
     drawPath(suvBody, color = Color(0xFF2E4D3B))
+
+    // SUV Front Headlight (Unlit, off, no beam)
+    val suvHeadlight = Path().apply {
+        moveTo(cx - w * 0.45f, cy + h * 0.02f)
+        lineTo(cx - w * 0.43f, cy - h * 0.06f)
+        lineTo(cx - w * 0.35f, cy - h * 0.09f)
+        lineTo(cx - w * 0.36f, cy + h * 0.02f)
+        close()
+    }
+    drawPath(suvHeadlight, color = Color(0xFFECEFF1))
+    drawPath(suvHeadlight, color = Color(0xFF1B2B20), style = Stroke(width = 1.6f))
+    drawCircle(
+        color = Color(0xFF90A4AE),
+        radius = h * 0.028f,
+        center = Offset(cx - w * 0.40f, cy - h * 0.03f)
+    )
+    drawCircle(
+        color = Color(0xFF455A64),
+        radius = h * 0.015f,
+        center = Offset(cx - w * 0.40f, cy - h * 0.03f)
+    )
 
     // Roof rack rails
     drawLine(
@@ -2637,7 +2677,7 @@ private fun DrawScope.drawCapyTintedWindowSUV(
 }
 
 /**
- * 4. Bottom-Right: Capybara drifting a car with ACTION LINES, TIRE SMOKE, and a VERY SERIOUS FACE!
+ * 4. Bottom-Right: Capybara drifting a lowered drift car with ACTION LINES, TIRE SMOKE, and a VERY SERIOUS FACE!
  */
 private fun DrawScope.drawCapyDriftingCar(
     center: Offset,
@@ -2648,16 +2688,18 @@ private fun DrawScope.drawCapyDriftingCar(
     drawPath(cloverPath, color = Color(0xFFB4C8A2))
 
     val cx = center.x + radius * 0.02f
-    val cy = center.y + radius * 0.06f
+    // Lowered stance: lowered body center line
+    val cy = center.y + radius * 0.08f
     val w = radius * 1.58f
     val h = radius * 0.72f
 
-    val wheelY = cy + h * 0.30f
+    // Lowered suspension stance: wheels tucked into fenders
+    val wheelY = cy + h * 0.24f
     val frontWheelX = cx - w * 0.28f
     val rearWheelX = cx + w * 0.26f
     val wheelRadius = h * 0.22f
 
-    // Road with drift marks
+    // Road with drift marks touching base of tires
     val roadY = wheelY + wheelRadius
     drawRoundRect(
         color = Color(0xFFA2B88F),
@@ -2716,7 +2758,7 @@ private fun DrawScope.drawCapyDriftingCar(
     }
     drawPath(spoilerPath, color = Color(0xFF0D47A1))
 
-    // Blue Tuner Drift Car Body (Slight diagonal aggressive drift pitch)
+    // Blue Tuner Drift Car Body (Lowered, low ground clearance drift chassis)
     val driftBody = Path().apply {
         moveTo(cx - w * 0.48f, cy + h * 0.20f)
         lineTo(cx - w * 0.44f, cy - h * 0.02f)
@@ -2727,6 +2769,27 @@ private fun DrawScope.drawCapyDriftingCar(
         close()
     }
     drawPath(driftBody, color = Color(0xFF1976D2))
+
+    // Drift Front Headlight (Unlit, off, no beam)
+    val driftHeadlight = Path().apply {
+        moveTo(cx - w * 0.46f, cy + h * 0.02f)
+        lineTo(cx - w * 0.43f, cy - h * 0.03f)
+        lineTo(cx - w * 0.34f, cy - h * 0.11f)
+        lineTo(cx - w * 0.36f, cy - h * 0.02f)
+        close()
+    }
+    drawPath(driftHeadlight, color = Color(0xFFECEFF1))
+    drawPath(driftHeadlight, color = Color(0xFF0D47A1), style = Stroke(width = 1.6f))
+    drawCircle(
+        color = Color(0xFF78909C),
+        radius = h * 0.026f,
+        center = Offset(cx - w * 0.39f, cy - h * 0.04f)
+    )
+    drawCircle(
+        color = Color(0xFF37474F),
+        radius = h * 0.014f,
+        center = Offset(cx - w * 0.39f, cy - h * 0.04f)
+    )
 
     // Roof & Pillar
     val driftRoof = Path().apply {
@@ -2858,19 +2921,12 @@ private fun DrawScope.drawCapyDriftingCar(
         cornerRadius = CornerRadius(3f, 3f)
     )
 
-    // Counter-steered Front Wheel (Angled into drift)
-    drawOval(
-        color = Color(0xFF1E1E1E),
-        topLeft = Offset(frontWheelX - wheelRadius * 0.8f, wheelY - wheelRadius),
-        size = Size(wheelRadius * 1.6f, wheelRadius * 2f)
-    )
-    drawOval(
-        color = Color(0xFFB0BEC5),
-        topLeft = Offset(frontWheelX - wheelRadius * 0.45f, wheelY - wheelRadius * 0.58f),
-        size = Size(wheelRadius * 0.9f, wheelRadius * 1.16f)
-    )
+    // Front Wheel (Perfect circular geometry with matching rim and center dot)
+    drawCircle(color = Color(0xFF1E1E1E), radius = wheelRadius, center = Offset(frontWheelX, wheelY))
+    drawCircle(color = Color(0xFF90A4AE), radius = wheelRadius * 0.58f, center = Offset(frontWheelX, wheelY))
+    drawCircle(color = Color(0xFF37474F), radius = wheelRadius * 0.25f, center = Offset(frontWheelX, wheelY))
 
-    // Spinning Rear Wheel (with motion rim blur)
+    // Spinning Rear Wheel (with matching rim & hub dot)
     drawCircle(color = Color(0xFF1E1E1E), radius = wheelRadius, center = Offset(rearWheelX, wheelY))
     drawCircle(color = Color(0xFF90A4AE), radius = wheelRadius * 0.58f, center = Offset(rearWheelX, wheelY))
     drawCircle(color = Color(0xFF37474F), radius = wheelRadius * 0.25f, center = Offset(rearWheelX, wheelY))

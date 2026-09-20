@@ -17,8 +17,8 @@ android {
     applicationId = "com.PixelParking.app"
     minSdk = 24
     targetSdk = 36
-    versionCode = 4
-    versionName = "0.4"
+    versionCode = 5
+    versionName = "0.5"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -118,6 +118,7 @@ dependencies {
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
   implementation(libs.play.services.location)
+  implementation(libs.play.services.wearable)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
@@ -138,3 +139,17 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+
+// Automatically ensure the latest wear-debug.apk is compiled and copied into assets before bundling
+val copyWearApkToAssets = tasks.register<Copy>("copyWearApkToAssets") {
+  dependsOn(":wear:assembleDebug")
+  from(project(":wear").layout.buildDirectory.file("outputs/apk/debug/wear-debug.apk"))
+  into(layout.projectDirectory.dir("src/main/assets"))
+}
+
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+  dependsOn(copyWearApkToAssets)
+}
+
+
+

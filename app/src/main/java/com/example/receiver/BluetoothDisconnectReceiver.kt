@@ -383,6 +383,11 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                     val newId = repository.saveNewParkingSpot(spot)
                     val savedSpot = spot.copy(id = newId)
 
+                    // Immediately sync active parking spot to Wear OS companion
+                    try {
+                        com.example.wear.WearDataLayerBridge.getInstance(context).syncParkingSpot(savedSpot)
+                    } catch (_: Throwable) {}
+
                     // Emit exactly ONE clean notification
                     ParkingNotificationHelper.showCarParkedNotification(context, savedSpot)
                     Log.d(TAG, "Successfully auto-parked vehicle '$effectiveDeviceName' ($effectiveDeviceAddress) with ID: $newId at $displayAddress")
@@ -396,6 +401,7 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                             if (!asyncAddress.isNullOrBlank()) {
                                 val updatedSpot = savedSpot.copy(address = asyncAddress)
                                 repository.updateParkingSpot(updatedSpot)
+                                com.example.wear.WearDataLayerBridge.getInstance(context).syncParkingSpot(updatedSpot)
                                 Log.d(TAG, "Updated database spot with reverse-geocoded address: $asyncAddress")
                             }
                         } catch (e: Throwable) {

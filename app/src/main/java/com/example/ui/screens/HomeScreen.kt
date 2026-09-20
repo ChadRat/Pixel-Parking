@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
@@ -156,11 +157,21 @@ fun HomeScreen(
                             interactionSource = remember { MutableInteractionSource() }
                         ) {
                             val now = System.currentTimeMillis()
-                            val updatedTaps = (tapTimestamps + now).takeLast(10)
-                            tapTimestamps = updatedTaps
+                            val targetTaps = 5
+                            val validTaps = (tapTimestamps.filter { now - it <= 6000L } + now).takeLast(targetTaps)
+                            tapTimestamps = validTaps
 
-                            if (updatedTaps.size >= 10 && (now - updatedTaps.first()) <= 10000L) {
-                                tapTimestamps = emptyList() // Reset timestamps
+                            if (validTaps.size == 1) {
+                                val message = if (strings.languageSection == "Γλώσσα") {
+                                    "Επιλογές προγραμματιστή"
+                                } else {
+                                    "Developer options"
+                                }
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            }
+
+                            if (validTaps.size >= targetTaps) {
+                                tapTimestamps = emptyList()
                                 viewModel.unlockDeveloperMode()
                                 onNavigateTab(AppTab.DEVELOPER_OPTIONS)
                             }

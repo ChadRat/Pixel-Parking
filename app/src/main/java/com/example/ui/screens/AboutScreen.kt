@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -53,6 +54,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.BuildConfig
+import com.example.ui.components.WearSideloadSheet
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.viewmodel.ParkingViewModel
 import com.example.util.UpdateCheckResult
@@ -228,6 +230,16 @@ fun AboutContent(
         tween(450),
         label = "about_license_icon_tint"
     )
+    val wearIconBg by animateColorAsState(
+        if (isDark) Color(0xFF381E72) else Color(0xFFEADDFF),
+        tween(450),
+        label = "about_wear_icon_bg"
+    )
+    val wearIconTint by animateColorAsState(
+        if (isDark) Color(0xFFD4BFFF) else Color(0xFF21005D),
+        tween(450),
+        label = "about_wear_icon_tint"
+    )
     val updateCardBg by animateColorAsState(
         if (isDark) Color(0xFF1B2824) else MaterialTheme.colorScheme.surfaceContainerHigh,
         tween(450),
@@ -243,6 +255,8 @@ fun AboutContent(
         tween(450),
         label = "about_update_btn_content"
     )
+
+    var showWearSideloadSheet by remember { mutableStateOf(false) }
 
     BackHandler(enabled = showLicenseDetail) {
         onToggleLicenseDetail(false)
@@ -486,6 +500,64 @@ fun AboutContent(
                             modifier = Modifier.size(16.dp)
                         )
                     }
+
+                    // Wavy Divider
+                    WavyDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        waveLength = 36f,
+                        amplitude = 8f,
+                        thickness = 5f
+                    )
+
+                    // 4. Wear OS Companion APK Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showWearSideloadSheet = true
+                            }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(wearIconBg, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Watch,
+                                contentDescription = null,
+                                tint = wearIconTint,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = strings.wearOsApkOptionTitle,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = strings.wearOsApkOptionSubtitle,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
 
@@ -642,6 +714,10 @@ fun AboutContent(
                         }
                     }
                 }
+            }
+
+            if (showWearSideloadSheet) {
+                WearSideloadSheet(onDismiss = { showWearSideloadSheet = false })
             }
         }
     } else {

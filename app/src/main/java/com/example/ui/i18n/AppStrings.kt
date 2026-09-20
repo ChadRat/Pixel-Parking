@@ -280,6 +280,24 @@ data class AppStrings(
     val exportSuccessToast: String get() = exportStrings.exportSuccessToast
     val exportNoSpotsToast: String get() = exportStrings.exportNoSpotsToast
     val exportShareSubject: String get() = exportStrings.exportShareSubject
+
+    val wearOsCompanionTitle: String get() = if (languageSection == "Γλώσσα") "Συνοδός Wear OS" else "Wear OS Companion"
+    val wearOsCompanionDesc: String get() = if (languageSection == "Γλώσσα") "Συγχρονισμός τοποθεσίας στάθμευσης στο smartwatch για άμεση πλοήγηση" else "Syncs parking location to your smartwatch for glanceable compass navigation"
+    val wearOsCrownOrientationTitle: String get() = if (languageSection == "Γλώσσα") "Θέση Κορώνας Ρολογιού" else "Watch Crown Position"
+    val wearOsCrownOrientationDesc: String get() = if (languageSection == "Γλώσσα") "Προσαρμόζει τον προσανατολισμό του βέλους εάν φοράτε το ρολόι με την κορώνα στα αριστερά ή δεξιά" else "Adjusts waypoint arrow heading if watch crown is worn on left or right side"
+    val wearOsCrownRight: String get() = if (languageSection == "Γλώσσα") "Δεξιά" else "Right Side"
+    val wearOsCrownLeft: String get() = if (languageSection == "Γλώσσα") "Αριστερά" else "Left Side"
+    val wearOsApkDirectAboutNote: String get() = if (languageSection == "Γλώσσα") "Το APK της εφαρμογής μπορεί να ληφθεί και να εγκατασταθεί (sideload) απευθείας από τη σελίδα Σχετικά." else "The companion APK can be accessed and sideloaded directly from the About page."
+    val wearOsSyncActive: String get() = if (languageSection == "Γλώσσα") "Γέφυρα DataLayer Ενεργή" else "DataLayer Bridge Active"
+    val wearOsSyncNow: String get() = if (languageSection == "Γλώσσα") "Συγχρονισμός στο Ρολόι" else "Sync to Watch"
+    val wearOsPreviewWatch: String get() = if (languageSection == "Γλώσσα") "Προεπισκόπηση Ρολογιού" else "Preview Watch Screen"
+    val wearOsApkOptionTitle: String get() = if (languageSection == "Γλώσσα") "Wear OS APK (Sideload)" else "Wear OS Companion APK"
+    val wearOsApkOptionSubtitle: String get() = if (languageSection == "Γλώσσα") "Λήψη ή sideload του APK για το smartwatch" else "Download or sideload watch app"
+    val wearOsApkDialogTitle: String get() = if (languageSection == "Γλώσσα") "Εφαρμογή Wear OS" else "Wear OS Companion APK"
+    val wearOsApkDialogDesc: String get() = if (languageSection == "Γλώσσα") "Εγκαταστήστε την εφαρμογή Pixel Parking στο smartwatch σας (Wear OS 3.0+) για πλοήγηση κατευθείαν στον καρπό σας." else "Install the Pixel Parking companion on your smartwatch (Wear OS 3.0+) for glanceable compass navigation on your wrist."
+    val wearOsApkDownloadButton: String get() = if (languageSection == "Γλώσσα") "Αποθήκευση στις Λήψεις" else "Save to Downloads"
+    val wearOsApkShareButton: String get() = if (languageSection == "Γλώσσα") "Αποστολή σε Εφαρμογή Sideload" else "Share to Sideload App"
+    val wearOsApkHowToSideload: String get() = if (languageSection == "Γλώσσα") "Οδηγίες Εγκατάστασης (Sideload)" else "How to Sideload"
 }
 
 data class TimerStrings(

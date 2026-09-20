@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Entire pin wrapped in a group to center precisely on the vertical axis (top margin 26.5dp, bottom margin 26.5dp) -->
+    <group android:translateY="0.5">
+
+        <!-- Base Pin with straight tangent sides and 5dp corner radius on point (Vibrant Blue) -->
+        <path
+            android:fillColor="#1A73E8"
+            android:pathData="M 36.68,56 
+                              A 20,20 0 1,1 71.32,56 
+                              L 58.33,78.5 
+                              A 5,5 0 0,1 49.67,78.5 
+                              Z" />
+
+        <!-- Inner Circle (Light Blue) - sits behind the peak -->
+        <path
+            android:fillColor="#669DF6"
+            android:pathData="M 54,33 
+                              A 9,9 0 1,0 54,51 
+                              A 9,9 0 1,0 54,33 Z" />
+
+        <!-- Highlight Dot (White) -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 58,36.5 
+                              A 2.5,2.5 0 1,0 58,41.5 
+                              A 2.5,2.5 0 1,0 58,36.5 Z" />
+
+        <!-- Bottom Mountain Peak and Road grouped with clip-path matching the mountain & perimeter boundaries -->
+        <group>
+            <clip-path
+                android:pathData="M 36.68,56 
+                                  L 54,46 
+                                  L 71.32,56 
+                                  L 58.33,78.5 
+                                  A 5,5 0 0,1 49.67,78.5 
+                                  Z" />
+
+            <!-- Bottom Mountain Peak / Pointing Shape (Dark Blue) -->
+            <path
+                android:fillColor="#0D47A1"
+                android:pathData="M 36.68,56 
+                                  L 54,46 
+                                  L 71.32,56 
+                                  L 58.33,78.5 
+                                  A 5,5 0 0,1 49.67,78.5 
+                                  Z" />
+
+            <!-- Smooth Distant Zigzag Road (Cleanly cut by left mountain edge and right perimeter) -->
+            <path
+                android:fillColor="#00000000"
+                android:strokeColor="#1565C0"
+                android:strokeWidth="1.4"
+                android:strokeLineCap="butt"
+                android:strokeLineJoin="round"
+                android:pathData="M 42,51 
+                                  C 46.5,51.8 53.5,53.5 53,56.5 
+                                  C 52.5,59.5 46,58.8 46,61.5 
+                                  C 46,64.5 56,65.5 68,67" />
+        </group>
+
+    </group>
+
+</vector>
