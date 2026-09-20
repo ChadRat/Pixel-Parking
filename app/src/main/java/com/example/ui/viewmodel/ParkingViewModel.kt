@@ -14,6 +14,9 @@ import com.example.data.entity.BluetoothCarDevice
 import com.example.data.entity.ParkingSpot
 import com.example.data.repository.ParkingRepository
 import com.example.notification.ParkingNotificationHelper
+import com.example.sensor.BluetoothProximityManager
+import com.example.sensor.BtProximityState
+import com.example.sensor.BtSignalTier
 import com.example.sensor.CompassSensorManager
 import com.example.sensor.CompassState
 import com.example.sensor.DeviceHardwareProfile
@@ -25,7 +28,12 @@ import com.example.sensor.WaypointHapticMode
 import com.example.service.ParkingRadarService
 import com.example.service.WaypointHapticService
 import com.example.ui.components.CarBadgeStyle
+import com.example.ui.components.CapyVariant
 import com.example.ui.i18n.AppLanguage
+import com.example.ui.i18n.AppStrings
+import com.example.ui.i18n.getAppStrings
+import com.example.ui.i18n.localizeFloor
+import com.example.ui.i18n.localizeSpotName
 import com.example.ui.theme.AppThemeMode
 import com.example.util.BluetoothDeviceHelper
 import com.example.util.HapticHelper
@@ -38,6 +46,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -59,6 +68,7 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         (application as AutoParkApplication).repository
 
     private val compassSensorManager = CompassSensorManager(application)
+    private val bluetoothProximityManager = BluetoothProximityManager(application, compassSensorManager)
 
     // Theme Mode: SYSTEM, LIGHT, DARK
     private val prefs = application.getSharedPreferences("pixel_parking_prefs", Context.MODE_PRIVATE)
@@ -84,6 +94,7 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     private val _dynamicColor = MutableStateFlow(prefs.getBoolean("dynamic_color", true))
     val dynamicColor: StateFlow<Boolean> = _dynamicColor.asStateFlow()
 
+
     private val _carBadgeStyle = MutableStateFlow(
         try {
             CarBadgeStyle.valueOf(prefs.getString("car_badge_style", CarBadgeStyle.CINEMATIC.name) ?: CarBadgeStyle.CINEMATIC.name)
@@ -93,14 +104,31 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     )
     val carBadgeStyle: StateFlow<CarBadgeStyle> = _carBadgeStyle.asStateFlow()
 
+    private val _capyVariant = MutableStateFlow(
+        try {
+            CapyVariant.valueOf(prefs.getString("capy_variant", CapyVariant.BABY.name) ?: CapyVariant.BABY.name)
+        } catch (_: Exception) {
+            CapyVariant.BABY
+        }
+    )
+    val capyVariant: StateFlow<CapyVariant> = _capyVariant.asStateFlow()
+
     private val _appLanguage = MutableStateFlow(
         try {
-            AppLanguage.valueOf(prefs.getString("app_language", AppLanguage.ENGLISH.name) ?: AppLanguage.ENGLISH.name)
+            val systemDefaultLang = if (java.util.Locale.getDefault().language.equals("el", ignoreCase = true)) {
+                AppLanguage.GREEK.name
+            } else {
+                AppLanguage.ENGLISH.name
+            }
+            AppLanguage.valueOf(prefs.getString("app_language", systemDefaultLang) ?: systemDefaultLang)
         } catch (_: Exception) {
             AppLanguage.ENGLISH
         }
     )
     val appLanguage: StateFlow<AppLanguage> = _appLanguage.asStateFlow()
+
+    val currentStrings: AppStrings
+        get() = getAppStrings(_appLanguage.value)
 
     private val _hapticProfile = MutableStateFlow(
         try {
@@ -168,15 +196,28 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     private val _isParkingTimerFeatureEnabled = MutableStateFlow(prefs.getBoolean("parking_timer_feature_enabled", false))
     val isParkingTimerFeatureEnabled: StateFlow<Boolean> = _isParkingTimerFeatureEnabled.asStateFlow()
 
+    // Geofencing Auto-Park Feature (Default disabled, toggleable in Dev Settings)
+    private val _isGeofenceAutoParkEnabled = MutableStateFlow(prefs.getBoolean("geofence_auto_park_enabled", false))
+    val isGeofenceAutoParkEnabled: StateFlow<Boolean> = _isGeofenceAutoParkEnabled.asStateFlow()
+
+    // Capy Cars Option in Developer Options (Default disabled)
+    private val _isDevCapyCarsEnabled = MutableStateFlow(prefs.getBoolean("dev_capy_cars_enabled", false))
+    val isDevCapyCarsEnabled: StateFlow<Boolean> = _isDevCapyCarsEnabled.asStateFlow()
+
     // Active Bluetooth Proximity Tracking
-    private val _activeBtProximityDevice = MutableStateFlow<BluetoothCarDevice?>(null)
-    val activeBtProximityDevice: StateFlow<BluetoothCarDevice?> = _activeBtProximityDevice.asStateFlow()
+    val btProximityState: StateFlow<BtProximityState> = bluetoothProximityManager.proximityState
 
-    private val _btProximityRssi = MutableStateFlow(-60)
-    val btProximityRssi: StateFlow<Int> = _btProximityRssi.asStateFlow()
+    val activeBtProximityDevice: StateFlow<BluetoothCarDevice?> = bluetoothProximityManager.proximityState
+        .map { it.targetDevice }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    private val _btProximityDistanceMeters = MutableStateFlow(8.0f)
-    val btProximityDistanceMeters: StateFlow<Float> = _btProximityDistanceMeters.asStateFlow()
+    val btProximityRssi: StateFlow<Int> = bluetoothProximityManager.proximityState
+        .map { it.smoothedRssi }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, -100)
+
+    val btProximityDistanceMeters: StateFlow<Float> = bluetoothProximityManager.proximityState
+        .map { it.distanceMeters }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 15.0f)
 
     // --- Parking & Charging Timer Feature ---
     private val _timerTotalSeconds = MutableStateFlow(
@@ -221,10 +262,9 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
 
     private var timerJob: kotlinx.coroutines.Job? = null
 
-    private val _btProximityRelativeAngle = MutableStateFlow(0f)
-    val btProximityRelativeAngle: StateFlow<Float> = _btProximityRelativeAngle.asStateFlow()
-
-    private var btProximityJob: kotlinx.coroutines.Job? = null
+    val btProximityRelativeAngle: StateFlow<Float> = bluetoothProximityManager.proximityState
+        .map { it.relativeAngle }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0f)
 
     // Derived Navigation Telemetry: Distance & Relative Arrow Angle
     val navigationTelemetry = combine(
@@ -347,14 +387,21 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         prefs.edit().putBoolean("dynamic_color", enabled).apply()
     }
 
+
     fun setCarBadgeStyle(style: CarBadgeStyle) {
         _carBadgeStyle.value = style
         prefs.edit().putString("car_badge_style", style.name).apply()
     }
 
+    fun setCapyVariant(variant: CapyVariant) {
+        _capyVariant.value = variant
+        prefs.edit().putString("capy_variant", variant.name).apply()
+    }
+
     fun setAppLanguage(language: AppLanguage) {
         _appLanguage.value = language
         prefs.edit().putString("app_language", language.name).apply()
+        ParkingNotificationHelper.createNotificationChannels(getApplication())
     }
 
     fun setHapticProfile(profile: HapticProfile) {
@@ -484,7 +531,11 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             if (lat == null || lng == null) {
                 _isGpsRefreshing.value = false
                 withContext(Dispatchers.Main) {
-                    com.example.notification.ParkingNotificationHelper.showSystemNotification(getApplication(), "Pixel Parking", "Acquiring GPS location... Please ensure Location is enabled, or search for your address.")
+                    com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                        getApplication(),
+                        currentStrings.appName,
+                        currentStrings.notificationGpsAcquiring
+                    )
                 }
                 return@launch
             }
@@ -525,7 +576,11 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             _isGpsRefreshing.value = false
 
             withContext(Dispatchers.Main) {
-                com.example.notification.ParkingNotificationHelper.showSystemNotification(getApplication(), "Pixel Parking", "Saved actual location: $address")
+                com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                    getApplication(),
+                    currentStrings.appName,
+                    String.format(currentStrings.notificationLocationSaved, address)
+                )
             }
         }
     }
@@ -590,7 +645,12 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             _selectedTab.value = AppTab.COMPASS_RADAR
             startCompass()
             withContext(Dispatchers.Main) {
-                com.example.notification.ParkingNotificationHelper.showSystemNotification(getApplication(), "Pixel Parking", "Navigating to: ${spot.spotName}")
+                val targetName = spot.spotName.ifBlank { currentStrings.parkedVehicle }
+                com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                    getApplication(),
+                    currentStrings.appName,
+                    String.format(currentStrings.notificationNavigatingTo, targetName)
+                )
             }
         }
     }
@@ -601,7 +661,11 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             val expiry = System.currentTimeMillis() + (minutes * 60 * 1000L)
             repository.updateParkingSpot(current.copy(meterExpiryTimestamp = expiry))
             withContext(Dispatchers.Main) {
-                com.example.notification.ParkingNotificationHelper.showSystemNotification(getApplication(), "Pixel Parking", "Meter alarm set for $minutes mins")
+                com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                    getApplication(),
+                    currentStrings.appName,
+                    String.format(currentStrings.notificationMeterAlarmSet, minutes)
+                )
             }
         }
     }
@@ -636,14 +700,30 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             if (!systemBonded.isNullOrEmpty()) {
                 val existing = repository.getAllDevicesDirect()
                 val existingMap = existing.associateBy { it.address.uppercase() }
+                val hasAnyMonitored = existing.any { it.isMonitoredCar }
 
                 systemBonded.forEach { dev ->
                     val found = existingMap[dev.address.uppercase()]
                     if (found == null) {
-                        repository.registerBluetoothDevice(dev, setAsPrimary = false)
-                    } else if (!found.isCustomRenamed && found.name != dev.name) {
-                        // Update system name only if user has NOT custom renamed it
-                        repository.updateBluetoothDevice(found.copy(name = dev.name))
+                        repository.registerBluetoothDevice(
+                            dev.copy(
+                                originalName = dev.name,
+                                isMonitoredCar = false
+                            ),
+                            setAsPrimary = false
+                        )
+                    } else {
+                        // Preserve user custom renaming and record original hardware name
+                        val origName = if (found.originalName.isNotBlank()) found.originalName else dev.name
+                        val effectiveName = if (found.isCustomRenamed) found.name else dev.name
+                        if (found.name != effectiveName || found.originalName != origName) {
+                            repository.updateBluetoothDevice(
+                                found.copy(
+                                    name = effectiveName,
+                                    originalName = origName
+                                )
+                            )
+                        }
                     }
                 }
             }
@@ -656,7 +736,12 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             val devices = allDevices.value
             val selected = devices.find { it.address == address }
             withContext(Dispatchers.Main) {
-                com.example.notification.ParkingNotificationHelper.showSystemNotification(getApplication(), "Pixel Parking", "'${selected?.name ?: "Device"}' enabled for Auto-Parking")
+                val deviceName = selected?.name ?: "Device"
+                com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                    getApplication(),
+                    currentStrings.appName,
+                    String.format(currentStrings.notificationDeviceEnabledAutoPark, deviceName)
+                )
             }
         }
     }
@@ -671,7 +756,11 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repository.renameBluetoothDevice(address, newName.trim())
             withContext(Dispatchers.Main) {
-                com.example.notification.ParkingNotificationHelper.showSystemNotification(getApplication(), "Pixel Parking", "Renamed vehicle to '${newName.trim()}'")
+                com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                    getApplication(),
+                    currentStrings.appName,
+                    String.format(currentStrings.notificationRenamedVehicle, newName.trim())
+                )
             }
         }
     }
@@ -694,7 +783,11 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
                 setAsPrimary = false
             )
             withContext(Dispatchers.Main) {
-                com.example.notification.ParkingNotificationHelper.showSystemNotification(getApplication(), "Pixel Parking", "'$name' added & enabled for Auto-Park")
+                com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                    getApplication(),
+                    currentStrings.appName,
+                    String.format(currentStrings.notificationDeviceAddedAutoPark, name)
+                )
             }
         }
     }
@@ -706,7 +799,11 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             }
             context.startActivity(intent)
         } catch (e: Exception) {
-            com.example.notification.ParkingNotificationHelper.showSystemNotification(getApplication(), "Pixel Parking", "Please open Bluetooth Settings from system settings")
+            com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                getApplication(),
+                currentStrings.appName,
+                currentStrings.notificationOpenBluetoothSettings
+            )
         }
     }
 
@@ -715,14 +812,25 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             setPackage(getApplication<Application>().packageName)
             putExtra("simulated_name", deviceName)
             putExtra("simulated_address", deviceAddress)
+            _currentLocation.value?.let { loc ->
+                if (loc.latitude != 0.0 || loc.longitude != 0.0) {
+                    putExtra("simulated_lat", loc.latitude)
+                    putExtra("simulated_lng", loc.longitude)
+                    putExtra("simulated_alt", loc.altitude)
+                    putExtra("simulated_accuracy", loc.accuracy)
+                }
+            }
         }
         getApplication<Application>().sendBroadcast(intent)
-        com.example.notification.ParkingNotificationHelper.showSystemNotification(getApplication(), "Pixel Parking", "Simulating BT disconnect for '$deviceName'...")
     }
 
     fun openGoogleMapsNavigation(context: Context, spot: ParkingSpot? = activeSpot.value) {
         if (spot == null) {
-            com.example.notification.ParkingNotificationHelper.showSystemNotification(getApplication(), "Pixel Parking", "No active parking spot to navigate to")
+            com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                getApplication(),
+                currentStrings.appName,
+                currentStrings.notificationNoActiveSpotToNavigate
+            )
             return
         }
         val lat = spot.latitude
@@ -757,7 +865,11 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
                 try {
                     context.startActivity(browserIntent)
                 } catch (e3: Exception) {
-                    com.example.notification.ParkingNotificationHelper.showSystemNotification(getApplication(), "Pixel Parking", "Could not open Maps navigation")
+                    com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                        getApplication(),
+                        currentStrings.appName,
+                        currentStrings.notificationCouldNotOpenMaps
+                    )
                 }
             }
         }
@@ -814,6 +926,7 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+
     fun toggleRadarService() {
         val current = activeSpot.value ?: return
         if (_isRadarServiceRunning.value) {
@@ -821,7 +934,9 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             _isRadarServiceRunning.value = false
         } else {
             val dist = navigationTelemetry.value.formattedDistance
-            ParkingRadarService.start(getApplication(), current.spotName, "$dist away • Level: ${current.floorLevel}")
+            val displayFloor = localizeFloor(current.floorLevel, currentStrings)
+            val displaySpot = localizeSpotName(current.spotName, currentStrings)
+            ParkingRadarService.start(getApplication(), displaySpot, "$dist • ${currentStrings.notificationFloorLabel} $displayFloor")
             _isRadarServiceRunning.value = true
         }
     }
@@ -867,64 +982,68 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun startBtProximityFinder(device: BluetoothCarDevice): Boolean {
-        val isConnected = BluetoothDeviceHelper.isDeviceConnected(getApplication(), device.address)
-        if (!isConnected) {
-            return false
+    fun setDevCapyCarsEnabled(enabled: Boolean) {
+        _isDevCapyCarsEnabled.value = enabled
+        prefs.edit().putBoolean("dev_capy_cars_enabled", enabled).apply()
+        if (!enabled && _carBadgeStyle.value == CarBadgeStyle.CAPY) {
+            setCarBadgeStyle(CarBadgeStyle.CINEMATIC)
         }
+    }
 
-        _activeBtProximityDevice.value = device
-        btProximityJob?.cancel()
-
-        btProximityJob = viewModelScope.launch(Dispatchers.Default) {
-            val rssiHistory = mutableListOf<Pair<Float, Int>>()
-            var currentRssi = -60
-            var targetRssi = -52
-            var estimatedTargetBearing = (compassSensorManager.compassState.value.azimuthDegrees + 45f) % 360f
-
-            while (isActive && _activeBtProximityDevice.value != null) {
-                val currentAzimuth = compassSensorManager.compassState.value.azimuthDegrees
-
-                // Dynamic smooth signal variation mimicking device distance & orientation changes
-                if (kotlin.random.Random.nextFloat() < 0.25f) {
-                    targetRssi = (targetRssi + kotlin.random.Random.nextInt(-5, 6)).coerceIn(-88, -35)
+    fun setGeofenceAutoParkEnabled(enabled: Boolean) {
+        _isGeofenceAutoParkEnabled.value = enabled
+        prefs.edit().putBoolean("geofence_auto_park_enabled", enabled).apply()
+        if (enabled) {
+            val loc = _currentLocation.value ?: activeSpot.value?.let {
+                Location("car_spot").apply {
+                    latitude = it.latitude
+                    longitude = it.longitude
                 }
-                if (currentRssi < targetRssi) currentRssi++
-                else if (currentRssi > targetRssi) currentRssi--
+            }
+            if (loc != null && (loc.latitude != 0.0 || loc.longitude != 0.0)) {
+                com.example.geofence.GeofenceManager.registerCarPerimeterGeofence(
+                    getApplication(),
+                    loc.latitude,
+                    loc.longitude
+                )
+            }
+        } else {
+            com.example.geofence.GeofenceManager.removeGeofences(getApplication())
+        }
+    }
 
-                _btProximityRssi.value = currentRssi
-
-                // Convert RSSI to distance representation for scallop shape fill
-                // -35 dBm -> ~1.5m (fills outer boundary completely)
-                // -88 dBm -> ~35m (small fill)
-                val clamped = currentRssi.coerceIn(-88, -35)
-                val distance = Math.pow(10.0, (-48.0 - clamped) / 20.0).toFloat().coerceIn(1.2f, 38f)
-                _btProximityDistanceMeters.value = distance
-
-                // Record compass azimuth and RSSI sample
-                rssiHistory.add(Pair(currentAzimuth, currentRssi))
-                if (rssiHistory.size > 20) rssiHistory.removeAt(0)
-
-                // Direction estimation: peak RSSI azimuth
-                val bestSamples = rssiHistory.sortedByDescending { it.second }.take(4)
-                if (bestSamples.isNotEmpty()) {
-                    val peakAzimuth = bestSamples.map { it.first }.average().toFloat()
-                    estimatedTargetBearing = peakAzimuth
-                }
-
-                val relativeAngle = (estimatedTargetBearing - currentAzimuth + 360f) % 360f
-                _btProximityRelativeAngle.value = relativeAngle
-
-                kotlinx.coroutines.delay(180L)
+    fun simulateGeofenceExit() {
+        val loc = _currentLocation.value ?: activeSpot.value?.let {
+            Location("car_spot").apply {
+                latitude = it.latitude
+                longitude = it.longitude
             }
         }
-        return true
+        val lat = loc?.latitude ?: 0.0
+        val lng = loc?.longitude ?: 0.0
+        if (lat != 0.0 && lng != 0.0) {
+            com.example.geofence.GeofenceManager.simulateGeofenceExit(getApplication(), lat, lng)
+        }
+    }
+
+    fun startBtProximityFinder(device: BluetoothCarDevice): Boolean {
+        val curLoc = _currentLocation.value
+        val spot = activeSpot.value
+        val started = bluetoothProximityManager.startProximityFinder(
+            device = device,
+            currentPhoneLat = curLoc?.latitude,
+            currentPhoneLng = curLoc?.longitude,
+            spotLat = spot?.latitude,
+            spotLng = spot?.longitude
+        )
+        if (started) {
+            startCompass()
+        }
+        return started
     }
 
     fun stopBtProximityFinder() {
-        btProximityJob?.cancel()
-        btProximityJob = null
-        _activeBtProximityDevice.value = null
+        bluetoothProximityManager.stopProximityFinder()
     }
 
     // --- Parking & Charging Timer Methods ---
@@ -971,8 +1090,8 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
                         _timerAlertsTriggered.value = triggered + alertMin
                         com.example.notification.ParkingNotificationHelper.showSystemNotification(
                             getApplication(),
-                            "Parking & Charging Timer",
-                            "⚠️ $alertMin minutes remaining before your parking / charging time ends!"
+                            currentStrings.notificationTimerAlertTitle,
+                            String.format(currentStrings.notificationTimerAlertBody, alertMin)
                         )
                         HapticHelper.getVibrator(getApplication())?.let { v ->
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -994,8 +1113,8 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
                     com.example.util.AlarmSoundHelper.playAlarm(getApplication())
                     com.example.notification.ParkingNotificationHelper.showSystemNotification(
                         getApplication(),
-                        "🚨 PARKING TIMER EXPIRED!",
-                        "Time is up! Your parking or charging session has ended. Move your car or unplug now."
+                        currentStrings.notificationTimerExpiredTitle,
+                        currentStrings.notificationTimerExpiredBody
                     )
                     break
                 }
@@ -1129,12 +1248,35 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         _alarmSoundTitle.value = com.example.util.AlarmSoundHelper.getAlarmTitle(getApplication())
     }
 
+    private val _updateCheckState = kotlinx.coroutines.flow.MutableStateFlow<com.example.util.UpdateCheckResult?>(null)
+    val updateCheckState: kotlinx.coroutines.flow.StateFlow<com.example.util.UpdateCheckResult?> = _updateCheckState.asStateFlow()
+
+    private val _isCheckingForUpdates = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val isCheckingForUpdates: kotlinx.coroutines.flow.StateFlow<Boolean> = _isCheckingForUpdates.asStateFlow()
+
     fun checkForUpdates(context: Context) {
-        com.example.util.UpdateManager.checkForUpdates(context, isAutomatic = false, language = _appLanguage.value)
+        _isCheckingForUpdates.value = true
+        com.example.util.UpdateManager.checkForUpdates(
+            context = context,
+            isAutomatic = false,
+            language = _appLanguage.value
+        ) { result ->
+            _isCheckingForUpdates.value = false
+            _updateCheckState.value = result
+        }
+    }
+
+    fun clearUpdateCheckState() {
+        _updateCheckState.value = null
+    }
+
+    fun downloadAndInstallUpdate(context: Context, downloadUrl: String) {
+        com.example.util.UpdateManager.startDownload(context, downloadUrl, _appLanguage.value)
     }
 
     override fun onCleared() {
         super.onCleared()
+        bluetoothProximityManager.stopProximityFinder()
         stopLocationTracking()
         compassSensorManager.stopListening()
     }

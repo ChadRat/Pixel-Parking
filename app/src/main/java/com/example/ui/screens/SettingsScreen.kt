@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -56,10 +57,14 @@ import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VolumeUp
@@ -105,6 +110,7 @@ import androidx.compose.ui.unit.sp
 import com.example.BuildConfig
 import com.example.ui.components.AnimatedNavIcon
 import com.example.ui.components.CarBadgeStyle
+import com.example.ui.components.CapyVariant
 import com.example.ui.components.FullGearNavIcon
 import com.example.ui.i18n.AppLanguage
 import com.example.ui.i18n.LocalAppStrings
@@ -127,12 +133,12 @@ fun SettingsScreen(
     val autoSunTheme by viewModel.autoSunTheme.collectAsState()
     val isDaytime by viewModel.isDaytime.collectAsState()
     val currentCarBadgeStyle by viewModel.carBadgeStyle.collectAsState()
+    val currentCapyVariant by viewModel.capyVariant.collectAsState()
+    val isDevCapyCarsEnabled by viewModel.isDevCapyCarsEnabled.collectAsState()
     val currentLanguage by viewModel.appLanguage.collectAsState()
-    val allSpots by viewModel.allSpots.collectAsState()
     val alarmSoundTitle by viewModel.alarmSoundTitle.collectAsState()
     val isParkingTimerEnabled by viewModel.isParkingTimerFeatureEnabled.collectAsState()
 
-    var showClearHistoryDialog by remember { mutableStateOf(false) }
     var isAlarmPreviewing by remember { mutableStateOf(false) }
 
     val ringtonePickerLauncher = rememberLauncherForActivityResult(
@@ -553,6 +559,7 @@ fun SettingsScreen(
                             )
                         )
                     }
+
                 }
             }
         }
@@ -618,10 +625,10 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // 2-option Chip switcher: Material Style vs Cinematic
+                    // Chip switcher: Material Style vs Cinematic vs Capy (if enabled in dev settings)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         ThemeOptionChip(
                             title = strings.carBadgeStyleMaterial,
@@ -637,6 +644,90 @@ fun SettingsScreen(
                             onClick = { viewModel.setCarBadgeStyle(CarBadgeStyle.CINEMATIC) },
                             modifier = Modifier.weight(1f)
                         )
+                        if (isDevCapyCarsEnabled) {
+                            ThemeOptionChip(
+                                title = strings.carBadgeStyleCapy,
+                                icon = Icons.Default.Pets,
+                                isSelected = currentCarBadgeStyle == CarBadgeStyle.CAPY,
+                                onClick = { viewModel.setCarBadgeStyle(CarBadgeStyle.CAPY) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    // Capybara Character Variant selector (Baby vs Adult) - appears only if Capy style is enabled
+                    AnimatedVisibility(
+                        visible = currentCarBadgeStyle == CarBadgeStyle.CAPY,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp)
+                        ) {
+                            HorizontalDivider(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    modifier = Modifier.size(54.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            Icons.Default.Pets,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                    }
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = strings.capyVariantTitle,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = strings.capyVariantSubtitle,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                ThemeOptionChip(
+                                    title = strings.capyVariantBaby,
+                                    icon = Icons.Default.AutoAwesome,
+                                    isSelected = currentCapyVariant == CapyVariant.BABY,
+                                    onClick = { viewModel.setCapyVariant(CapyVariant.BABY) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                ThemeOptionChip(
+                                    title = strings.capyVariantAdult,
+                                    icon = Icons.Default.Pets,
+                                    isSelected = currentCapyVariant == CapyVariant.ADULT,
+                                    onClick = { viewModel.setCapyVariant(CapyVariant.ADULT) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1019,32 +1110,6 @@ fun SettingsScreen(
             }
         }
     }
-
-    // Confirmation Dialog for Clearing History
-    if (showClearHistoryDialog) {
-        AlertDialog(
-            onDismissRequest = { showClearHistoryDialog = false },
-            title = { Text(strings.clearAllConfirmTitle) },
-            text = { Text(strings.clearAllConfirmMsg) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.clearHistory()
-                        showClearHistoryDialog = false
-                        com.example.notification.ParkingNotificationHelper.showSystemNotification(context, "Pixel Parking", strings.historyClearedToast)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text(strings.clearAll)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearHistoryDialog = false }) {
-                    Text(strings.cancel)
-                }
-            }
-        )
-    }
 }
 
 @Composable
@@ -1055,13 +1120,21 @@ private fun ThemeOptionChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val bgColor = if (isSelected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+
+    val contentColor = if (isSelected) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
     Surface(
         shape = RoundedCornerShape(24.dp),
-        color = if (isSelected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        },
+        color = bgColor,
         modifier = modifier
             .clip(RoundedCornerShape(24.dp))
             .clickable { onClick() }
@@ -1077,7 +1150,7 @@ private fun ThemeOptionChip(
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = contentColor,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.height(4.dp))
@@ -1085,7 +1158,7 @@ private fun ThemeOptionChip(
                 text = title,
                 fontSize = 12.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                color = contentColor
             )
         }
     }

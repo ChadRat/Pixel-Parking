@@ -230,10 +230,11 @@ object HapticHelper {
     }
 
     /**
-     * Enhanced LRA History Spin & Reversal Haptic (2.0s Organic Sequence):
-     * Smooth mechanical ratchet ticks as it spins through 360° + overshoot,
-     * and a soft catch at the reversal point.
-     * All ending pulses and harsh shocks have been completely removed.
+     * History Clock Icon Haptic:
+     * Tactile mechanical clicks triggered every 2 hours that the small arm (hour hand) crosses
+     * while completing its 12-hour (360°) rotation (at hours 2, 4, 6, 8, 10, and 12),
+     * followed by one final tactile click when the icon returns to its original position (~2000ms).
+     * Uses exclusively standard tactile clicks (PRIMITIVE_CLICK) matching the existing click feel and no other kind.
      */
     fun performHistorySpinHaptic(context: Context) {
         val vibrator = getVibrator(context) ?: return
@@ -243,41 +244,58 @@ object HapticHelper {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
                 vibrator.areAllPrimitivesSupported(
-                    VibrationEffect.Composition.PRIMITIVE_CLICK,
-                    VibrationEffect.Composition.PRIMITIVE_TICK
+                    VibrationEffect.Composition.PRIMITIVE_CLICK
                 )
             ) {
                 val comp = VibrationEffect.startComposition()
-                // 0ms - 1400ms: Rotates one full turn + overshoot (light ratchet spin ticks)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.70f, 0)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.70f, 250)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.75f, 280)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.80f, 310)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.80f, 330)
-                // 1400ms: Soft reversal apex catch tick (NO trailing or ending pulse)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.75f, 240)
+                // 6 distinct tactile clicks every 2 hours as crossed by the small hour hand:
+                // Hour 2 (~455ms)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.95f, 455)
+                // Hour 4 (~666ms)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.95f, 195)
+                // Hour 6 (~850ms, peak velocity)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f, 168)
+                // Hour 8 (~1034ms)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f, 168)
+                // Hour 10 (~1245ms)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.95f, 195)
+                // Hour 12 (~1700ms, full 12-hour rotation complete)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.95f, 439)
+                // Return to original position (~2000ms)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.95f, 284)
                 vibrator.vibrate(comp.compose())
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val timings = longArrayOf(
-                    0,   18,
-                    230, 18,
-                    260, 20,
-                    280, 20,
-                    300, 20,
-                    220, 24  // Apex reversal catch (~1400ms) - NO ending pulse
+                    455, 16,
+                    195, 16,
+                    168, 16,
+                    168, 16,
+                    195, 16,
+                    439, 16,
+                    284, 16
                 )
                 val amplitudes = intArrayOf(
-                    0,   160,
-                    0,   160,
-                    0,   170,
-                    0,   180,
-                    0,   180,
-                    0,   190
+                    0,   240,
+                    0,   250,
+                    0,   255,
+                    0,   255,
+                    0,   250,
+                    0,   240,
+                    0,   245
                 )
                 vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(longArrayOf(0, 18, 250, 18, 300, 20, 250, 20), -1)
+                val timings = longArrayOf(
+                    455, 16,
+                    195, 16,
+                    168, 16,
+                    168, 16,
+                    195, 16,
+                    439, 16,
+                    284, 16
+                )
+                vibrator.vibrate(timings, -1)
             }
         } catch (_: Exception) {}
     }

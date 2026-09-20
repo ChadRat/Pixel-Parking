@@ -27,7 +27,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.BluetoothSearching
@@ -288,6 +294,67 @@ fun BluetoothSettingsContent(
                 }
             }
 
+            // BATTERY OPTIMIZATION & BACKGROUND RELIABILITY BANNER
+            item {
+                val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                val isIgnoringOptimizations = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && powerManager != null) {
+                    powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                } else true
+
+                if (!isIgnoringOptimizations) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(20.dp))
+                            .clickable {
+                                try {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                            data = Uri.parse("package:${context.packageName}")
+                                        }
+                                        context.startActivity(intent)
+                                    }
+                                } catch (_: Exception) {
+                                    val fallbackIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                    context.startActivity(fallbackIntent)
+                                }
+                            }
+                            .testTag("battery_optimization_bt_warning_card"),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.BatteryAlert,
+                                contentDescription = "Battery Warning",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Allow Unrestricted Background Battery",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "On long drives (hours), Android Doze may sleep background tasks. Tap to disable battery restrictions so disconnects always trigger immediately.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 15.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // CHOOSE FROM PAIRED BLUETOOTH DEVICES
             item {
                 Row(
@@ -417,24 +484,40 @@ fun BluetoothSettingsContent(
                             .testTag("rename_bt_input")
                     )
                     Text(
-                        text = "MAC: ${targetDev.address}",
+                        text = "Original BT: ${if (targetDev.originalName.isNotBlank()) targetDev.originalName else targetDev.name} • MAC: ${targetDev.address}",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        if (renameInputText.isNotBlank()) {
-                            viewModel.renameBluetoothDevice(targetDev.address, renameInputText.trim())
-                        }
-                        deviceToRename = null
-                    },
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.testTag("confirm_rename_bt_btn")
-                ) {
-                    Text("Save", fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = {
+                            val activeName = if (renameInputText.isNotBlank()) renameInputText.trim() else targetDev.name
+                            if (renameInputText.isNotBlank() && renameInputText.trim() != targetDev.name) {
+                                viewModel.renameBluetoothDevice(targetDev.address, renameInputText.trim())
+                            }
+                            viewModel.simulateBluetoothDisconnect(activeName, targetDev.address)
+                            deviceToRename = null
+                        },
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.testTag("test_disconnect_dialog_btn")
+                    ) {
+                        Text("Test Disconnect", fontSize = 12.sp)
+                    }
+                    Button(
+                        onClick = {
+                            if (renameInputText.isNotBlank()) {
+                                viewModel.renameBluetoothDevice(targetDev.address, renameInputText.trim())
+                            }
+                            deviceToRename = null
+                        },
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.testTag("confirm_rename_bt_btn")
+                    ) {
+                        Text("Save", fontWeight = FontWeight.SemiBold)
+                    }
                 }
             },
             dismissButton = {
@@ -529,8 +612,11 @@ fun GoogleCarBluetoothChoiceItem(
                                 )
                             }
                         }
+                        val origText = if (device.isCustomRenamed && device.originalName.isNotBlank() && !device.originalName.equals(device.name, ignoreCase = true)) {
+                            "Orig: ${device.originalName} • "
+                        } else ""
                         Text(
-                            text = "${device.deviceType} • ${device.address}",
+                            text = "${device.deviceType} • $origText${device.address}",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,

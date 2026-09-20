@@ -19,6 +19,9 @@ interface ParkingSpotDao {
     @Query("SELECT * FROM parking_spots WHERE isActive = 1 ORDER BY timestamp DESC LIMIT 1")
     suspend fun getActiveSpotDirect(): ParkingSpot?
 
+    @Query("SELECT * FROM parking_spots ORDER BY timestamp DESC LIMIT 1")
+    suspend fun getMostRecentSpotDirect(): ParkingSpot?
+
     @Query("SELECT * FROM parking_spots WHERE id = :id")
     suspend fun getSpotById(id: Long): ParkingSpot?
 

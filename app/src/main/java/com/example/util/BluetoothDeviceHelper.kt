@@ -34,9 +34,11 @@ object BluetoothDeviceHelper {
 
             bonded?.map { device ->
                 val type = inferDeviceType(device)
+                val devName = device.name ?: "Unknown Device (${device.address.takeLast(5)})"
                 BluetoothCarDevice(
                     address = device.address,
-                    name = device.name ?: "Unknown Device (${device.address.takeLast(5)})",
+                    name = devName,
+                    originalName = devName,
                     isMonitoredCar = false,
                     deviceType = type
                 )
@@ -57,14 +59,13 @@ object BluetoothDeviceHelper {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val permission = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT)
             if (permission != PackageManager.PERMISSION_GRANTED) {
-                // Return true as fallback if permission is pending, or if bonded
-                return true
+                return false
             }
         }
 
         return try {
             val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-            val adapter = bluetoothManager?.adapter ?: BluetoothAdapter.getDefaultAdapter() ?: return true
+            val adapter = bluetoothManager?.adapter ?: BluetoothAdapter.getDefaultAdapter() ?: return false
 
             if (!adapter.isEnabled) return false
 
@@ -92,11 +93,9 @@ object BluetoothDeviceHelper {
                 if (isConnected == true) return true
             } catch (_: Exception) {}
 
-            // Fallback: If device is in system bonded list and adapter is enabled, consider reachable
-            val isBonded = adapter.bondedDevices?.any { it.address.equals(address, ignoreCase = true) } == true
-            isBonded
+            false
         } catch (e: Exception) {
-            true
+            false
         }
     }
 

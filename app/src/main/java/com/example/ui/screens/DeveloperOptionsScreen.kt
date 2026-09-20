@@ -19,8 +19,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.PinDrop
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.ShareLocation
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.viewmodel.ParkingViewModel
 
 @Composable
@@ -45,10 +52,13 @@ fun DeveloperOptionsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     val isMockGps by viewModel.isDevMockGpsEnabled.collectAsStateWithLifecycle()
     val isBtProximity by viewModel.isBtProximityEnabled.collectAsStateWithLifecycle()
     val isHapticDiag by viewModel.isDevHapticDiagnostics.collectAsStateWithLifecycle()
     val isParkingTimerEnabled by viewModel.isParkingTimerFeatureEnabled.collectAsStateWithLifecycle()
+    val isGeofenceAutoPark by viewModel.isGeofenceAutoParkEnabled.collectAsStateWithLifecycle()
+    val isCapyCarsEnabled by viewModel.isDevCapyCarsEnabled.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier
@@ -107,6 +117,49 @@ fun DeveloperOptionsScreen(
 
             item {
                 DeveloperOptionSimpleRow(
+                    title = strings.devGeofenceAutoParkTitle,
+                    subtitle = strings.devGeofenceAutoParkSubtitle,
+                    icon = Icons.Default.ShareLocation,
+                    checked = isGeofenceAutoPark,
+                    onCheckedChange = { viewModel.setGeofenceAutoParkEnabled(it) },
+                    testTag = "toggle_dev_geofence_autopark"
+                )
+            }
+
+            if (isGeofenceAutoPark) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        FilledTonalButton(
+                            onClick = { viewModel.simulateGeofenceExit() },
+                            modifier = Modifier.testTag("btn_simulate_geofence_exit"),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = strings.devSimulateGeofenceExit,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                DeveloperOptionSimpleRow(
                     title = "Bluetooth proximity",
                     subtitle = "Show signal scanner on paired devices",
                     icon = Icons.Default.BluetoothSearching,
@@ -135,6 +188,17 @@ fun DeveloperOptionsScreen(
                     checked = isParkingTimerEnabled,
                     onCheckedChange = { viewModel.setParkingTimerFeatureEnabled(it) },
                     testTag = "toggle_dev_parking_timer"
+                )
+            }
+
+            item {
+                DeveloperOptionSimpleRow(
+                    title = "Capy cars",
+                    subtitle = "Enable capibara Cars as a third car style option",
+                    icon = Icons.Default.Pets,
+                    checked = isCapyCarsEnabled,
+                    onCheckedChange = { viewModel.setDevCapyCarsEnabled(it) },
+                    testTag = "toggle_dev_capy_cars"
                 )
             }
         }

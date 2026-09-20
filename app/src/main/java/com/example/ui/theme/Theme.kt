@@ -12,7 +12,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -183,7 +183,7 @@ fun MyApplicationTheme(
 
     // OLED mode sets background & surface to pure pitch black #000000 (only active when dark mode is enabled)
     // Light mode applies a warmer background infused with the dynamic Material wallpaper palette
-    val colorScheme = when {
+    val targetColorScheme = when {
         oledMode && isDark -> baseScheme.toOledColorScheme()
         !isDark -> baseScheme.toWarmLightColorScheme()
         else -> baseScheme
@@ -191,15 +191,19 @@ fun MyApplicationTheme(
 
     val view = LocalView.current
     if (!view.isInEditMode) {
-        SideEffect {
-            val window = (view.context as Activity).window
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDark
-            WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !isDark
+        DisposableEffect(isDark) {
+            val activity = view.context as? Activity
+            activity?.window?.let { window ->
+                val insetsController = WindowCompat.getInsetsController(window, view)
+                insetsController.isAppearanceLightStatusBars = !isDark
+                insetsController.isAppearanceLightNavigationBars = !isDark
+            }
+            onDispose { }
         }
     }
 
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = targetColorScheme,
         typography = Typography,
         shapes = PixelExpressiveShapes,
         content = content

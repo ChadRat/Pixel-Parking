@@ -14,6 +14,7 @@ import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -130,6 +131,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        configureHighRefreshRate()
 
         com.example.util.UpdateManager.scheduleDailyUpdateCheck(this)
         com.example.util.UpdateManager.checkForUpdates(this, isAutomatic = true, language = viewModel.appLanguage.value)
@@ -159,9 +161,55 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        configureHighRefreshRate()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            configureHighRefreshRate()
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        configureHighRefreshRate()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
+    }
+
+    private fun configureHighRefreshRate() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val display = display
+                val modes = display?.supportedModes ?: emptyArray()
+                val highestRefreshMode = modes.maxByOrNull { it.refreshRate }
+                val maxRate = highestRefreshMode?.refreshRate ?: 120f
+
+                val params = window.attributes
+                if (highestRefreshMode != null && maxRate > 60f) {
+                    params.preferredDisplayModeId = highestRefreshMode.modeId
+                }
+                params.preferredRefreshRate = maxRate.coerceAtLeast(120f)
+                window.attributes = params
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                @Suppress("DEPRECATION")
+                val display = windowManager.defaultDisplay
+                val modes = display?.supportedModes ?: emptyArray()
+                val highestRefreshMode = modes.maxByOrNull { it.refreshRate }
+                if (highestRefreshMode != null && highestRefreshMode.refreshRate > 60f) {
+                    val params = window.attributes
+                    params.preferredDisplayModeId = highestRefreshMode.modeId
+                    params.preferredRefreshRate = highestRefreshMode.refreshRate
+                    window.attributes = params
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     private fun handleIntent(intent: Intent?) {
@@ -244,12 +292,12 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
                     return Offset.Zero
                 }
                 val delta = available.y
-                // User scrolls downwards (content moves up, negative delta) -> retract downwards
-                if (delta < -8f && isNavBarVisible) {
+                // User scrolls downwards (content moves up, negative delta) -> retract downwards smoothly
+                if (delta < -18f && isNavBarVisible) {
                     isNavBarVisible = false
                 }
-                // User scrolls upwards (content moves down, positive delta) -> reappear
-                else if (delta > 8f && !isNavBarVisible) {
+                // User scrolls upwards (content moves down, positive delta) -> reappear smoothly
+                else if (delta > 18f && !isNavBarVisible) {
                     isNavBarVisible = true
                 }
                 return Offset.Zero
@@ -332,7 +380,9 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .blur(backgroundBlur)
+                .then(
+                    if (backgroundBlur > 0.5.dp) Modifier.blur(backgroundBlur) else Modifier
+                )
         ) {
             HorizontalPager(
                 state = pagerState,
@@ -348,11 +398,17 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
                             val pageOffset = (
                                 (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
                             ).absoluteValue
-                            val pageScale = (1f - 0.035f * pageOffset).coerceIn(0.93f, 1f)
-                            val pageAlpha = (1f - 0.35f * pageOffset).coerceIn(0.65f, 1f)
-                            scaleX = pageScale
-                            scaleY = pageScale
-                            alpha = pageAlpha
+                            if (pageOffset > 0.005f) {
+                                val pageScale = (1f - 0.035f * pageOffset).coerceIn(0.93f, 1f)
+                                val pageAlpha = (1f - 0.35f * pageOffset).coerceIn(0.65f, 1f)
+                                scaleX = pageScale
+                                scaleY = pageScale
+                                alpha = pageAlpha
+                            } else {
+                                scaleX = 1f
+                                scaleY = 1f
+                                alpha = 1f
+                            }
                         }
                 ) {
                     when (mainTabs[pageIndex]) {

@@ -49,7 +49,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.entity.ParkingSpot
+import com.example.ui.i18n.LocalAppStrings
 import java.util.Locale
+
+private data class FloorOption(val id: String, val label: String, val aliases: List<String>)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,22 +66,48 @@ fun EditSpotDialog(
     isRefreshingGps: Boolean = false,
     onSearchAddress: (suspend (String) -> Pair<Double, Double>?)? = null
 ) {
+    val strings = LocalAppStrings.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    var spotName by remember { mutableStateOf(initialSpot?.spotName ?: "My Parked Car") }
-    var selectedFloor by remember { mutableStateOf(initialSpot?.floorLevel ?: "Ground Level") }
+    val initialName = remember(initialSpot?.spotName, strings) {
+        val raw = initialSpot?.spotName
+        if (raw.isNullOrBlank() || raw == "My Parked Car" || raw == "Το Αυτοκίνητό μου") {
+            strings.myParkedCar
+        } else {
+            raw
+        }
+    }
+
+    val initialFloor = remember(initialSpot?.floorLevel, strings) {
+        when (val raw = initialSpot?.floorLevel) {
+            "Ground Level", "Ισόγειο", null, "" -> strings.floorGroundLevel
+            "Level 1", "1ος Όροφος", "Επίπεδο 1" -> strings.floorLevel1
+            "Level 2", "2ος Όροφος", "Επίπεδο 2" -> strings.floorLevel2
+            "Level 3", "3ος Όροφος", "Επίπεδο 3" -> strings.floorLevel3
+            "Underground P1", "Υπόγειο -1", "Υπόγειο 1" -> strings.floorUndergroundP1
+            "Underground P2", "Υπόγειο -2", "Υπόγειο 2" -> strings.floorUndergroundP2
+            "Underground P3", "Υπόγειο -3", "Υπόγειο 3" -> strings.floorUndergroundP3
+            "Roof Deck", "Ταράτσα" -> strings.floorRoofDeck
+            else -> raw
+        }
+    }
+
+    var spotName by remember { mutableStateOf(initialName) }
+    var selectedFloor by remember { mutableStateOf(initialFloor) }
     var note by remember { mutableStateOf(initialSpot?.note ?: "") }
 
-    val commonFloors = listOf(
-        "Ground Level",
-        "Level 1",
-        "Level 2",
-        "Level 3",
-        "Underground P1",
-        "Underground P2",
-        "Underground P3",
-        "Roof Deck"
-    )
+    val commonFloors = remember(strings) {
+        listOf(
+            FloorOption("ground", strings.floorGroundLevel, listOf("Ground Level", "Ισόγειο")),
+            FloorOption("lvl1", strings.floorLevel1, listOf("Level 1", "1ος Όροφος", "Επίπεδο 1")),
+            FloorOption("lvl2", strings.floorLevel2, listOf("Level 2", "2ος Όροφος", "Επίπεδο 2")),
+            FloorOption("lvl3", strings.floorLevel3, listOf("Level 3", "3ος Όροφος", "Επίπεδο 3")),
+            FloorOption("p1", strings.floorUndergroundP1, listOf("Underground P1", "Υπόγειο -1", "Υπόγειο 1")),
+            FloorOption("p2", strings.floorUndergroundP2, listOf("Underground P2", "Υπόγειο -2", "Υπόγειο 2")),
+            FloorOption("p3", strings.floorUndergroundP3, listOf("Underground P3", "Υπόγειο -3", "Υπόγειο 3")),
+            FloorOption("roof", strings.floorRoofDeck, listOf("Roof Deck", "Ταράτσα"))
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -111,7 +140,7 @@ fun EditSpotDialog(
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.AddLocationAlt,
-                            contentDescription = "Spot Icon",
+                            contentDescription = strings.saveParkingSpotTitle,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(22.dp)
                         )
@@ -122,7 +151,7 @@ fun EditSpotDialog(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (initialSpot != null) "Edit Spot Details" else "Save Parking Spot",
+                        text = if (initialSpot != null) strings.editSpotDetailsTitle else strings.saveParkingSpotTitle,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -130,7 +159,7 @@ fun EditSpotDialog(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = if (initialSpot != null) "Customized parking notes & floor" else "Record your vehicle position",
+                        text = if (initialSpot != null) strings.editSpotDetailsSubtitle else strings.recordVehiclePositionSubtitle,
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -151,7 +180,7 @@ fun EditSpotDialog(
                         .padding(14.dp)
                 ) {
                     Text(
-                        text = if (initialSpot != null) "SAVED PARKING COORDINATES" else "PARKING COORDINATES",
+                        text = if (initialSpot != null) strings.savedParkingCoordinatesHeader else strings.parkingCoordinatesHeader,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -159,10 +188,10 @@ fun EditSpotDialog(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     val displayAddress = when {
-                        initialSpot != null -> initialSpot.address.ifBlank { "Recorded Parking Spot" }
+                        initialSpot != null -> initialSpot.address.ifBlank { strings.recordedParkingSpot }
                         currentAddress.isNotBlank() -> currentAddress
                         currentLocation != null -> String.format(Locale.US, "Lat: %.5f, Lng: %.5f", currentLocation.latitude, currentLocation.longitude)
-                        else -> "Current vehicle location"
+                        else -> strings.currentVehicleLocation
                     }
 
                     Text(
@@ -199,7 +228,7 @@ fun EditSpotDialog(
             OutlinedTextField(
                 value = spotName,
                 onValueChange = { spotName = it },
-                label = { Text("Spot Name / Vehicle") },
+                label = { Text(strings.spotNameOrVehicleLabel) },
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -213,7 +242,7 @@ fun EditSpotDialog(
 
             // Floor / Underground Level Selector
             Text(
-                text = "Floor / Parking Level",
+                text = strings.floorOrParkingLevelLabel,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -225,18 +254,18 @@ fun EditSpotDialog(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                commonFloors.forEach { floor ->
-                    val isSelected = selectedFloor == floor
+                commonFloors.forEach { option ->
+                    val isSelected = selectedFloor == option.label || option.aliases.any { it.equals(selectedFloor, ignoreCase = true) }
                     FilterChip(
                         selected = isSelected,
-                        onClick = { selectedFloor = floor },
-                        label = { Text(floor, fontSize = 12.sp) },
+                        onClick = { selectedFloor = option.label },
+                        label = { Text(option.label, fontSize = 12.sp) },
                         shape = RoundedCornerShape(14.dp),
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
                             selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
                         ),
-                        modifier = Modifier.testTag("floor_chip_$floor")
+                        modifier = Modifier.testTag("floor_chip_${option.id}")
                     )
                 }
             }
@@ -245,8 +274,8 @@ fun EditSpotDialog(
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
-                label = { Text("Pillar #, Section, or Notes") },
-                placeholder = { Text("e.g., Near Pillar 42C, Blue elevator") },
+                label = { Text(strings.notesOrPillarLabel) },
+                placeholder = { Text(strings.notesOrPillarPlaceholder) },
                 maxLines = 3,
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -273,7 +302,7 @@ fun EditSpotDialog(
                         .padding(end = 8.dp)
                         .testTag("cancel_spot_btn")
                 ) {
-                    Text("Cancel")
+                    Text(strings.cancel)
                 }
 
                 Button(
@@ -291,7 +320,7 @@ fun EditSpotDialog(
                     modifier = Modifier.testTag("save_spot_confirm_btn")
                 ) {
                     Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.padding(end = 6.dp))
-                    Text(if (initialSpot != null) "Update Details" else "Save Spot", fontWeight = FontWeight.SemiBold)
+                    Text(if (initialSpot != null) strings.updateDetailsButton else strings.saveSpotButton, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

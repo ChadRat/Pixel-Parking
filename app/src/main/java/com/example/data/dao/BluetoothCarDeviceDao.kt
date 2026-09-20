@@ -19,6 +19,9 @@ interface BluetoothCarDeviceDao {
     @Query("SELECT * FROM bluetooth_devices WHERE isMonitoredCar = 1")
     fun getMonitoredDevices(): Flow<List<BluetoothCarDevice>>
 
+    @Query("SELECT * FROM bluetooth_devices WHERE isMonitoredCar = 1")
+    suspend fun getMonitoredDevicesDirect(): List<BluetoothCarDevice>
+
     @Query("SELECT * FROM bluetooth_devices WHERE isMonitoredCar = 1 LIMIT 1")
     suspend fun getSelectedMonitoredDevice(): BluetoothCarDevice?
 
@@ -31,11 +34,17 @@ interface BluetoothCarDeviceDao {
     @Query("UPDATE bluetooth_devices SET isMonitoredCar = 1 WHERE UPPER(address) = UPPER(:address)")
     suspend fun setSoleMonitoredDevice(address: String)
 
-    @Query("SELECT * FROM bluetooth_devices WHERE UPPER(address) = UPPER(:address) LIMIT 1")
+    @Query("SELECT * FROM bluetooth_devices WHERE UPPER(address) = UPPER(:address) OR REPLACE(REPLACE(UPPER(address), ':', ''), '-', '') = REPLACE(REPLACE(UPPER(:address), ':', ''), '-', '') LIMIT 1")
     suspend fun getDeviceByAddress(address: String): BluetoothCarDevice?
+
+    @Query("SELECT * FROM bluetooth_devices WHERE UPPER(name) = UPPER(:name) OR UPPER(originalName) = UPPER(:name) LIMIT 1")
+    suspend fun getDeviceByNameOrOriginalName(name: String): BluetoothCarDevice?
 
     @Query("UPDATE bluetooth_devices SET name = :name, isCustomRenamed = 1 WHERE UPPER(address) = UPPER(:address)")
     suspend fun updateDeviceName(address: String, name: String)
+
+    @Query("UPDATE bluetooth_devices SET name = :name, originalName = CASE WHEN originalName IS NULL OR originalName = '' THEN :originalName ELSE originalName END, isCustomRenamed = 1 WHERE UPPER(address) = UPPER(:address)")
+    suspend fun updateDeviceNameAndOriginal(address: String, name: String, originalName: String)
 
     @Query("UPDATE bluetooth_devices SET isMonitoredCar = :isMonitored WHERE UPPER(address) = UPPER(:address)")
     suspend fun setDeviceMonitoredState(address: String, isMonitored: Boolean)

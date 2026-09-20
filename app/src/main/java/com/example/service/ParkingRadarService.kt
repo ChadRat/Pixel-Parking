@@ -10,6 +10,8 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.notification.ParkingNotificationHelper
+import com.example.ui.i18n.getAppStrings
+import com.example.ui.i18n.localizeSpotName
 
 class ParkingRadarService : Service() {
 
@@ -23,8 +25,9 @@ class ParkingRadarService : Service() {
             return START_NOT_STICKY
         }
 
-        val distanceText = intent?.getStringExtra("distance_text") ?: "Tracking distance..."
-        val spotName = intent?.getStringExtra("spot_name") ?: "Parked Car"
+        val strings = getAppStrings()
+        val distanceText = intent?.getStringExtra("distance_text") ?: strings.notificationTrackingDistance
+        val spotName = intent?.getStringExtra("spot_name") ?: strings.parkedVehicle
 
         val notification = buildForegroundNotification(spotName, distanceText)
         startForeground(ParkingNotificationHelper.NOTIFICATION_ID_SERVICE, notification)
@@ -33,6 +36,10 @@ class ParkingRadarService : Service() {
     }
 
     private fun buildForegroundNotification(spotName: String, distanceText: String): Notification {
+        val strings = getAppStrings()
+        val displaySpotName = localizeSpotName(spotName, strings)
+        val title = String.format(strings.notificationActiveCompass, displaySpotName)
+
         val contentIntent = Intent(this, MainActivity::class.java).apply {
             putExtra("action", "open_radar")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -56,11 +63,11 @@ class ParkingRadarService : Service() {
 
         return NotificationCompat.Builder(this, ParkingNotificationHelper.CHANNEL_RADAR_SERVICE)
             .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setContentTitle("Active Compass Direction: $spotName")
+            .setContentTitle(title)
             .setContentText(distanceText)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop Guidance", pendingStopIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, strings.notificationStopGuidance, pendingStopIntent)
             .build()
     }
 

@@ -114,6 +114,7 @@ fun HomeScreen(
     val currentAddress by viewModel.currentAddress.collectAsState()
     val isGpsRefreshing by viewModel.isGpsRefreshing.collectAsState()
     val carBadgeStyle by viewModel.carBadgeStyle.collectAsState()
+    val capyVariant by viewModel.capyVariant.collectAsState()
     val isTimerRunning by viewModel.timerIsRunning.collectAsStateWithLifecycle()
     val timerRemainingSeconds by viewModel.timerRemainingSeconds.collectAsStateWithLifecycle()
     val isParkingTimerEnabled by viewModel.isParkingTimerFeatureEnabled.collectAsStateWithLifecycle()
@@ -131,7 +132,7 @@ fun HomeScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .blur(backgroundBlur)
+            .then(if (backgroundBlur > 0.5.dp) Modifier.blur(backgroundBlur) else Modifier)
             .padding(horizontal = 18.dp)
             .testTag("home_screen"),
         contentPadding = PaddingValues(top = 16.dp, bottom = 110.dp),
@@ -206,6 +207,7 @@ fun HomeScreen(
                 currentAddress = currentAddress,
                 isGpsRefreshing = isGpsRefreshing,
                 carBadgeStyle = carBadgeStyle,
+                capyVariant = capyVariant,
                 isTimerRunning = isTimerRunning,
                 timerRemainingSeconds = timerRemainingSeconds,
                 isParkingTimerEnabled = isParkingTimerEnabled,
@@ -277,6 +279,7 @@ fun EmptyParkingStateCard(
     currentAddress: String,
     isGpsRefreshing: Boolean,
     carBadgeStyle: com.example.ui.components.CarBadgeStyle = com.example.ui.components.CarBadgeStyle.CINEMATIC,
+    capyVariant: com.example.ui.components.CapyVariant = com.example.ui.components.CapyVariant.BABY,
     isTimerRunning: Boolean = false,
     timerRemainingSeconds: Long = 0L,
     isParkingTimerEnabled: Boolean = false,
@@ -306,7 +309,8 @@ fun EmptyParkingStateCard(
                     .fillMaxWidth()
                     .padding(top = 2.dp, bottom = 2.dp),
                 size = 176.dp,
-                style = carBadgeStyle
+                style = carBadgeStyle,
+                capyVariant = capyVariant
             )
 
             Spacer(modifier = Modifier.height(12.dp))

@@ -32,6 +32,106 @@ import kotlin.math.sin
 
 object LocationHelper {
 
+    fun formatCoordinates(lat: Double, lng: Double): String {
+        val latDir = if (lat >= 0) "N" else "S"
+        val lngDir = if (lng >= 0) "E" else "W"
+        return String.format(Locale.US, "%.5f° %s, %.5f° %s", kotlin.math.abs(lat), latDir, kotlin.math.abs(lng), lngDir)
+    }
+
+    @SuppressLint("MissingPermission")
+    suspend fun getLocationForAutoPark(context: Context): Location? = withContext(Dispatchers.IO) {
+        // 1. Collect any known cached locations first for instant availability
+        var bestCachedLoc: Location? = null
+        try {
+            val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+            val fusedLast = suspendCancellableCoroutine<Location?> { cont ->
+                fusedClient.lastLocation
+                    .addOnSuccessListener { loc -> if (cont.isActive) cont.resume(loc) }
+                    .addOnFailureListener { if (cont.isActive) cont.resume(null) }
+            }
+            if (fusedLast != null && (fusedLast.latitude != 0.0 || fusedLast.longitude != 0.0)) {
+                bestCachedLoc = fusedLast
+            }
+        } catch (_: Throwable) {}
+
+        // Also check system providers (GPS, Network, Passive) for any cached fixes
+        try {
+            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            if (locationManager != null) {
+                val providers = listOf(
+                    LocationManager.GPS_PROVIDER,
+                    LocationManager.NETWORK_PROVIDER,
+                    LocationManager.PASSIVE_PROVIDER
+                )
+                val systemCached = providers.mapNotNull { p ->
+                    try {
+                        if (locationManager.isProviderEnabled(p)) locationManager.getLastKnownLocation(p) else null
+                    } catch (_: Throwable) { null }
+                }.filter { it.latitude != 0.0 || it.longitude != 0.0 }
+
+                if (systemCached.isNotEmpty()) {
+                    val newestSys = systemCached.maxByOrNull { it.time }
+                    if (bestCachedLoc == null || (newestSys != null && newestSys.time > bestCachedLoc.time)) {
+                        bestCachedLoc = newestSys
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+
+        // If cached location is very fresh (< 15 seconds old) and accurate (< 25m), use it immediately!
+        if (bestCachedLoc != null && (System.currentTimeMillis() - bestCachedLoc.time) < 15_000L && bestCachedLoc.accuracy < 25f) {
+            return@withContext bestCachedLoc
+        }
+
+        // Request a fresh high-accuracy fix with a sufficient 5-second timeout
+        try {
+            val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+            val freshLoc = withTimeoutOrNull(5000L) {
+                suspendCancellableCoroutine<Location?> { cont ->
+                    val cts = CancellationTokenSource()
+                    fusedClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.token)
+                        .addOnSuccessListener { loc -> if (cont.isActive) cont.resume(loc) }
+                        .addOnFailureListener { if (cont.isActive) cont.resume(null) }
+                    cont.invokeOnCancellation { cts.cancel() }
+                }
+            }
+            if (freshLoc != null && (freshLoc.latitude != 0.0 || freshLoc.longitude != 0.0)) {
+                return@withContext freshLoc
+            }
+        } catch (_: Throwable) {}
+
+        // If fresh high-accuracy fix timed out, but we have any cached location from driving, return it!
+        if (bestCachedLoc != null && (bestCachedLoc.latitude != 0.0 || bestCachedLoc.longitude != 0.0)) {
+            return@withContext bestCachedLoc
+        }
+
+        // Fallback: fast balanced power / network fix (works indoors or in covered parking garages)
+        try {
+            val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+            val networkLoc = withTimeoutOrNull(3000L) {
+                suspendCancellableCoroutine<Location?> { cont ->
+                    val cts = CancellationTokenSource()
+                    fusedClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token)
+                        .addOnSuccessListener { loc -> if (cont.isActive) cont.resume(loc) }
+                        .addOnFailureListener { if (cont.isActive) cont.resume(null) }
+                    cont.invokeOnCancellation { cts.cancel() }
+                }
+            }
+            if (networkLoc != null && (networkLoc.latitude != 0.0 || networkLoc.longitude != 0.0)) {
+                return@withContext networkLoc
+            }
+        } catch (_: Throwable) {}
+
+        // Ultimate fallback: system location manager listener or any cached fix
+        val current = getCurrentLocation(context)
+        if (current != null && (current.latitude != 0.0 || current.longitude != 0.0)) {
+            return@withContext current
+        }
+
+        // If all active requests failed, return bestCachedLoc even if slightly older
+        bestCachedLoc
+    }
+
     @SuppressLint("MissingPermission")
     suspend fun getCurrentLocation(context: Context): Location? = withContext(Dispatchers.IO) {
         // 1. Try Google Play Services FusedLocationProviderClient
@@ -279,9 +379,7 @@ object LocationHelper {
         }
 
         // 3. Fallback clean coordinate representation
-        val latDir = if (lat >= 0) "N" else "S"
-        val lngDir = if (lng >= 0) "E" else "W"
-        String.format(Locale.US, "%.5f° %s, %.5f° %s", kotlin.math.abs(lat), latDir, kotlin.math.abs(lng), lngDir)
+        formatCoordinates(lat, lng)
     }
 
     suspend fun getCoordinatesFromAddress(
@@ -359,9 +457,21 @@ object LocationHelper {
         lat2: Double,
         lng2: Double
     ): Float {
-        val results = FloatArray(1)
-        Location.distanceBetween(lat1, lng1, lat2, lng2, results)
-        return results[0]
+        try {
+            val results = FloatArray(1)
+            Location.distanceBetween(lat1, lng1, lat2, lng2, results)
+            return results[0]
+        } catch (_: Throwable) {
+            // Pure Math Haversine fallback for unit testing environments
+            val r = 6371000.0 // Earth radius in meters
+            val dLat = Math.toRadians(lat2 - lat1)
+            val dLng = Math.toRadians(lng2 - lng1)
+            val a = sin(dLat / 2) * sin(dLat / 2) +
+                    cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+                    sin(dLng / 2) * sin(dLng / 2)
+            val c = 2 * atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
+            return (r * c).toFloat()
+        }
     }
 
     /**

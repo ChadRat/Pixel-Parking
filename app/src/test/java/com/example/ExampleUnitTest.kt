@@ -6,12 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
 class ExampleUnitTest {
 
     @Test
@@ -52,5 +47,20 @@ class ExampleUnitTest {
         assertTrue(times.sunriseTimestampMillis > 0)
         assertTrue(times.sunsetTimestampMillis > 0)
         assertTrue(times.sunsetTimestampMillis > times.sunriseTimestampMillis)
+    }
+
+    @Test
+    fun testGeofenceConstants() {
+        assertEquals("CAR_PERIMETER_GEOFENCE", com.example.geofence.GeofenceManager.GEOFENCE_REQUEST_ID)
+        assertTrue(com.example.geofence.GeofenceManager.DEFAULT_PERIMETER_RADIUS_METERS > 0f)
+    }
+
+    @Test
+    fun testAppThemeModes() {
+        val modes = com.example.ui.theme.AppThemeMode.values()
+        assertEquals(3, modes.size)
+        assertTrue(modes.contains(com.example.ui.theme.AppThemeMode.SYSTEM))
+        assertTrue(modes.contains(com.example.ui.theme.AppThemeMode.LIGHT))
+        assertTrue(modes.contains(com.example.ui.theme.AppThemeMode.DARK))
     }
 }

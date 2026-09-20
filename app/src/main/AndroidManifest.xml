@@ -14,6 +14,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" tools:targetApi="31" />
 
     <!-- Notifications & System -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -22,6 +23,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <queries>
@@ -43,6 +45,7 @@
     <application
         android:name=".AutoParkApplication"
         android:allowBackup="true"
+        android:hardwareAccelerated="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -72,10 +75,27 @@
             android:enabled="true">
             <intent-filter>
                 <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECT_REQUESTED" />
                 <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
                 <action android:name="android.bluetooth.adapter.action.STATE_CHANGED" />
+                <action android:name="android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED" />
+                <action android:name="android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" />
+                <action android:name="android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED" />
                 <action android:name="com.example.autopark.ACTION_SIMULATE_DISCONNECT" />
                 <action android:name="com.example.autopark.ACTION_NAVIGATE_CAR" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Geofence transitions receiver for perimeter departure auto-saving -->
+        <receiver
+            android:name=".receiver.GeofenceTransitionsReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="com.example.autopark.ACTION_GEOFENCE_TRANSITION" />
+                <action android:name="com.example.autopark.ACTION_SIMULATE_GEOFENCE_EXIT" />
             </intent-filter>
         </receiver>
 
@@ -103,6 +123,8 @@
 
         <receiver android:name=".receiver.UpdateReceiver" android:exported="true">
             <intent-filter>
+                <action android:name="com.example.ACTION_DOWNLOAD_UPDATE" />
+                <action android:name="com.example.ACTION_INSTALL_UPDATE" />
                 <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
             </intent-filter>
         </receiver>

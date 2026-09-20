@@ -113,18 +113,14 @@ fun CompassRadarScreen(
         }
     }
 
-    val activeBtDevice by viewModel.activeBtProximityDevice.collectAsStateWithLifecycle()
-    val btRssi by viewModel.btProximityRssi.collectAsStateWithLifecycle()
-    val btDistanceMeters by viewModel.btProximityDistanceMeters.collectAsStateWithLifecycle()
-    val btRelativeAngle by viewModel.btProximityRelativeAngle.collectAsStateWithLifecycle()
+    val btProximityState by viewModel.btProximityState.collectAsStateWithLifecycle()
+    val isBtMode = btProximityState.isSearching && btProximityState.targetDevice != null
 
-    val isBtMode = activeBtDevice != null
-
-    val effectiveRelativeArrowAngle = if (isBtMode) btRelativeAngle else telemetry.relativeArrowAngle
-    val effectiveDistanceMeters = if (isBtMode) btDistanceMeters else telemetry.distanceMeters
+    val effectiveRelativeArrowAngle = if (isBtMode) btProximityState.relativeAngle else telemetry.relativeArrowAngle
+    val effectiveDistanceMeters = if (isBtMode) btProximityState.distanceMeters else telemetry.distanceMeters
     val effectiveHasTarget = if (isBtMode) true else telemetry.hasActiveTarget
     val effectiveIsAligned = if (isBtMode) {
-        abs(btRelativeAngle) < 20f || btRelativeAngle > 340f
+        abs(btProximityState.relativeAngle) < 20f || btProximityState.relativeAngle > 340f
     } else {
         telemetry.hasActiveTarget && (abs(telemetry.relativeArrowAngle) < 15f || telemetry.relativeArrowAngle > 345f)
     }
@@ -132,7 +128,11 @@ fun CompassRadarScreen(
     val isAligned = effectiveIsAligned
     val localeSep = java.text.DecimalFormatSymbols.getInstance().decimalSeparator
     val distanceDisplay = if (isBtMode) {
-        "${btDistanceMeters.toInt()} ${strings.meters}"
+        if (btProximityState.distanceMeters < 2f) {
+            "< 2 ${strings.meters}"
+        } else {
+            "${btProximityState.distanceMeters.toInt()} ${strings.meters}"
+        }
     } else when {
         activeSpot == null -> "--"
         !telemetry.hasActiveTarget -> {
@@ -168,11 +168,13 @@ fun CompassRadarScreen(
 
     // Dynamic proximity status title matching Google Find My Device UI
     val proximityStatus: String? = if (isBtMode) {
-        when {
-            btRssi >= -45 -> strings.carIsHere
-            btRssi >= -60 -> strings.carVeryClose
-            btRssi >= -75 -> strings.walkInThisDirection
-            else -> null
+        when (btProximityState.signalTier) {
+            com.example.sensor.BtSignalTier.IMMEDIATE -> strings.carIsHere
+            com.example.sensor.BtSignalTier.VERY_CLOSE -> strings.carVeryClose
+            com.example.sensor.BtSignalTier.CLOSE -> strings.carVeryClose
+            com.example.sensor.BtSignalTier.MODERATE -> strings.walkInThisDirection
+            com.example.sensor.BtSignalTier.WEAK -> strings.alignPhone
+            com.example.sensor.BtSignalTier.SEARCHING -> "Searching Bluetooth signal..."
         }
     } else when {
         activeSpot == null -> strings.noSpotsFound
@@ -185,7 +187,9 @@ fun CompassRadarScreen(
     }
 
     val isCarHereOrVeryClose = if (isBtMode) {
-        btRssi >= -60
+        btProximityState.signalTier == com.example.sensor.BtSignalTier.IMMEDIATE ||
+        btProximityState.signalTier == com.example.sensor.BtSignalTier.VERY_CLOSE ||
+        btProximityState.signalTier == com.example.sensor.BtSignalTier.CLOSE
     } else {
         telemetry.hasActiveTarget && (
             telemetry.distanceMeters <= 8.0f ||
@@ -195,7 +199,7 @@ fun CompassRadarScreen(
     }
 
     val spotDisplayName = if (isBtMode) {
-        activeBtDevice?.name ?: "Bluetooth Device"
+        btProximityState.targetDevice?.name ?: "Bluetooth Device"
     } else when {
         activeSpot == null -> strings.myParkedCar
         isDeviceRenamed -> associatedDevice.name
@@ -285,6 +289,29 @@ fun CompassRadarScreen(
                         )
 
                         if (activeSpot != null) {
+                            if (isBtMode) {
+                                DropdownMenuItem(
+                                    text = { Text("Stop Bluetooth Radar", color = MaterialTheme.colorScheme.onSurface) },
+                                    leadingIcon = { Icon(Icons.Default.BluetoothSearching, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.stopBtProximityFinder()
+                                    }
+                                )
+                            } else if (associatedDevice != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Find with Bluetooth (${associatedDevice.name})", color = MaterialTheme.colorScheme.onSurface) },
+                                    leadingIcon = { Icon(Icons.Default.BluetoothSearching, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                    onClick = {
+                                        showMenu = false
+                                        val started = viewModel.startBtProximityFinder(associatedDevice)
+                                        if (!started) {
+                                            Toast.makeText(context, "Scanning for vehicle Bluetooth...", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                )
+                            }
+
                             DropdownMenuItem(
                                 text = { Text(strings.editDetails, color = MaterialTheme.colorScheme.onSurface) },
                                 leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) },
@@ -351,13 +378,13 @@ fun CompassRadarScreen(
                             }
                             Column {
                                 Text(
-                                    text = "Finding Bluetooth Device",
+                                    text = btProximityState.targetDevice?.name ?: "Bluetooth Proximity Finder",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                                 Text(
-                                    text = "RSSI Signal Finder Active • Tap to exit",
+                                    text = btProximityState.statusText,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                                 )
@@ -381,14 +408,14 @@ fun CompassRadarScreen(
 
             // AUTOMATIC COMPASS CALIBRATION BANNER
             AnimatedVisibility(
-                visible = compassState.needsCalibration,
+                visible = compassState.needsCalibration || compassState.hasMagneticInterference,
                 enter = fadeIn() + slideInVertically { -it / 2 },
                 exit = fadeOut() + slideOutVertically { -it / 2 }
             ) {
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    color = if (compassState.hasMagneticInterference) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = if (compassState.hasMagneticInterference) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -401,30 +428,30 @@ fun CompassRadarScreen(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = MaterialTheme.colorScheme.tertiary,
+                            color = if (compassState.hasMagneticInterference) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary,
                             modifier = Modifier.size(36.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.Explore,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onTertiary,
+                                    tint = if (compassState.hasMagneticInterference) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onTertiary,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = strings.compassCalibrationNeeded,
+                                text = if (compassState.hasMagneticInterference) strings.compassMagneticInterference else strings.compassCalibrationNeeded,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                                color = if (compassState.hasMagneticInterference) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = strings.compassCalibrationInstruction,
+                                text = if (compassState.hasMagneticInterference) strings.compassMagneticInterferenceInstruction else strings.compassCalibrationInstruction,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.9f),
+                                color = (if (compassState.hasMagneticInterference) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer).copy(alpha = 0.9f),
                                 lineHeight = 16.sp
                             )
                         }
@@ -435,7 +462,7 @@ fun CompassRadarScreen(
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Dismiss",
-                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                tint = if (compassState.hasMagneticInterference) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
                                 modifier = Modifier.size(18.dp)
                             )
                         }

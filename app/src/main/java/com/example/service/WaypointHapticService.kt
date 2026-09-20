@@ -12,6 +12,8 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.notification.ParkingNotificationHelper
+import com.example.ui.i18n.getAppStrings
+import com.example.ui.i18n.localizeSpotName
 import com.example.sensor.AdaptiveWaypointHapticScheduler
 import com.example.sensor.DeviceHardwareProfile
 import com.example.sensor.HapticPatternEvent
@@ -111,6 +113,10 @@ class WaypointHapticService : Service() {
     }
 
     private fun buildHapticServiceNotification(spotName: String, distanceText: String): Notification {
+        val strings = getAppStrings()
+        val displaySpotName = localizeSpotName(spotName, strings)
+        val title = String.format(strings.notificationWaypointHaptics, displaySpotName)
+
         val contentIntent = Intent(this, MainActivity::class.java).apply {
             putExtra("action", "open_radar")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -134,11 +140,11 @@ class WaypointHapticService : Service() {
 
         return NotificationCompat.Builder(this, ParkingNotificationHelper.CHANNEL_RADAR_SERVICE)
             .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setContentTitle("Waypoint Adaptive Haptics: $spotName")
+            .setContentTitle(title)
             .setContentText(distanceText)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop Haptics", pendingStopIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, strings.notificationStopHaptics, pendingStopIntent)
             .build()
     }
 

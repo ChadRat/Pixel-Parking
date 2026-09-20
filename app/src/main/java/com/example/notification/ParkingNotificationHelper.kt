@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.MainActivity
 import com.example.data.entity.ParkingSpot
+import com.example.ui.i18n.getAppStrings
 
 object ParkingNotificationHelper {
 
@@ -23,13 +24,14 @@ object ParkingNotificationHelper {
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val strings = context.getAppStrings()
 
             val alertsChannel = NotificationChannel(
                 CHANNEL_PARKING_ALERTS,
-                "Car Parking Alerts",
+                strings.notificationChannelAlertsName,
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Notifies when your car's Bluetooth disconnects and automatically saves parking location"
+                description = strings.notificationChannelAlertsDesc
                 enableLights(true)
                 enableVibration(true)
                 setShowBadge(true)
@@ -37,10 +39,10 @@ object ParkingNotificationHelper {
 
             val serviceChannel = NotificationChannel(
                 CHANNEL_RADAR_SERVICE,
-                "Active Waypoint Guidance",
+                strings.notificationChannelRadarName,
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Foreground waypoint tracking to navigate back to your parked car"
+                description = strings.notificationChannelRadarDesc
             }
 
             notificationManager.createNotificationChannel(alertsChannel)
@@ -50,6 +52,7 @@ object ParkingNotificationHelper {
 
     fun showCarParkedNotification(context: Context, spot: ParkingSpot) {
         createNotificationChannels(context)
+        val strings = context.getAppStrings()
 
         // Main Tap Intent -> Open App
         val contentIntent = Intent(context, MainActivity::class.java).apply {
@@ -89,27 +92,28 @@ object ParkingNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val deviceLabel = spot.bluetoothDeviceName ?: "Car Bluetooth"
-        val subtitle = "${spot.address}\nFloor: ${spot.floorLevel}"
+        val deviceLabel = spot.bluetoothDeviceName?.takeIf { it.isNotBlank() } ?: strings.notificationCarBluetoothDefault
+        val title = String.format(strings.notificationDeviceDisconnected, deviceLabel)
+        val addressText = spot.address.ifBlank {
+            String.format(java.util.Locale.US, "%.5f, %.5f", spot.latitude, spot.longitude)
+        }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_PARKING_ALERTS)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setContentTitle("$deviceLabel Disconnected")
-            .setContentText("Location automatically saved at ${spot.address}")
-            .setStyle(
-                NotificationCompat.BigTextStyle()
-                    .bigText("${spot.spotName}\n${spot.address}\nFloor: ${spot.floorLevel}\nSaved automatically via Bluetooth disconnect.")
-            )
+            .setContentTitle(title)
+            .setContentText(addressText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(addressText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
             .setContentIntent(pendingContentIntent)
-            .addAction(android.R.drawable.ic_dialog_map, "Google Maps", pendingMapIntent)
-            .addAction(android.R.drawable.ic_menu_compass, "Waypoint Direction", pendingCompassIntent)
+            .addAction(android.R.drawable.ic_dialog_map, strings.notificationActionGoogleMaps, pendingMapIntent)
+            .addAction(android.R.drawable.ic_menu_compass, strings.notificationActionWaypointDirection, pendingCompassIntent)
 
         try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_PARKED, builder.build())
-        } catch (e: SecurityException) {
+        } catch (e: Throwable) {
             e.printStackTrace()
         }
     }
@@ -120,14 +124,16 @@ object ParkingNotificationHelper {
 
     fun showSystemNotification(context: Context, title: String?, message: String) {
         createNotificationChannels(context)
+        val strings = context.getAppStrings()
+
+        val displayTitle = when {
+            title.isNullOrBlank() || title == "Pixel Parking" -> strings.appName
+            else -> title
+        }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_PARKING_ALERTS)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .apply {
-                if (!title.isNullOrBlank() && title != "Pixel Parking") {
-                    setContentTitle(title)
-                }
-            }
+            .setContentTitle(displayTitle)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -136,7 +142,7 @@ object ParkingNotificationHelper {
         try {
             // Using current time as ID to allow multiple generic notifications if needed
             NotificationManagerCompat.from(context).notify(System.currentTimeMillis().toInt(), builder.build())
-        } catch (e: SecurityException) {
+        } catch (e: Throwable) {
             e.printStackTrace()
         }
     }

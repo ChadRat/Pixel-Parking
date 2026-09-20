@@ -7,5 +7,16 @@ package com.example.ui.components
  */
 enum class CarBadgeStyle {
     MATERIAL,
-    CINEMATIC
+    CINEMATIC,
+    CAPY
+}
+
+/**
+ * Variant for the central capybara badge character when CAPY style is enabled.
+ * - BABY: Extra cute, chubby baby capybara with sweet closed smiling eyes.
+ * - ADULT: Calm, reference sitting capybara with classic posture and horizontal sleepy eyes.
+ */
+enum class CapyVariant {
+    BABY,
+    ADULT
 }

@@ -18,7 +18,8 @@ data class CompassState(
     val rollDegrees: Float = 0f,
     val accuracy: Int = SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
     val isAlignedWithTarget: Boolean = false,
-    val needsCalibration: Boolean = false
+    val needsCalibration: Boolean = false,
+    val hasMagneticInterference: Boolean = false
 ) {
     val cardinalDirection: String
         get() {
@@ -62,6 +63,9 @@ class CompassSensorManager(private val context: Context) : SensorEventListener {
     private var isManualCalibrationActive = false
     private var gravityValues: FloatArray? = null
     private var geomagneticValues: FloatArray? = null
+    
+    private var hasRotationVector = false
+    private var currentMagInterference = false
 
     fun triggerManualCalibration() {
         isUserDismissedCalibration = false
@@ -95,14 +99,20 @@ class CompassSensorManager(private val context: Context) : SensorEventListener {
 
     fun startListening() {
         val rotationVectorSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        val magSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+        hasRotationVector = rotationVectorSensor != null
+
         if (rotationVectorSensor != null) {
             sensorManager.registerListener(this, rotationVectorSensor, SensorManager.SENSOR_DELAY_UI)
         } else {
             // Fallback to Accelerometer + Magnetic field sensors
             val accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-            val magSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
             if (accelSensor != null) sensorManager.registerListener(this, accelSensor, SensorManager.SENSOR_DELAY_UI)
-            if (magSensor != null) sensorManager.registerListener(this, magSensor, SensorManager.SENSOR_DELAY_UI)
+        }
+
+        // Always register magnetic field sensor to detect interference
+        if (magSensor != null) {
+            sensorManager.registerListener(this, magSensor, SensorManager.SENSOR_DELAY_UI)
         }
     }
 
@@ -119,14 +129,21 @@ class CompassSensorManager(private val context: Context) : SensorEventListener {
             processRotationMatrix(event.accuracy)
         } else if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
             gravityValues = event.values.clone()
-            if (geomagneticValues != null) {
+            if (!hasRotationVector && geomagneticValues != null) {
                 if (SensorManager.getRotationMatrix(rotationMatrix, null, gravityValues, geomagneticValues)) {
                     processRotationMatrix(event.accuracy)
                 }
             }
         } else if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
             geomagneticValues = event.values.clone()
-            if (gravityValues != null) {
+
+            // Detect magnetic interference (Earth's magnetic field is ~25 to 65 microteslas)
+            val magnitude = kotlin.math.sqrt((event.values[0] * event.values[0] +
+                                              event.values[1] * event.values[1] +
+                                              event.values[2] * event.values[2]).toDouble())
+            currentMagInterference = magnitude > 150.0 || magnitude < 5.0
+
+            if (!hasRotationVector && gravityValues != null) {
                 if (SensorManager.getRotationMatrix(rotationMatrix, null, gravityValues, geomagneticValues)) {
                     processRotationMatrix(event.accuracy)
                 }
@@ -135,17 +152,52 @@ class CompassSensorManager(private val context: Context) : SensorEventListener {
     }
 
     private fun processRotationMatrix(accuracy: Int) {
-        val rawAzimuth = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
-        val normalizedAzimuth = (rawAzimuth + 360f) % 360f
         SensorManager.getOrientation(rotationMatrix, orientationAngles)
+        val originalPitch = Math.toDegrees(orientationAngles[1].toDouble()).toFloat()
+        val originalRoll = Math.toDegrees(orientationAngles[2].toDouble()).toFloat()
 
-        val pitch = Math.toDegrees(orientationAngles[1].toDouble()).toFloat()
-        val roll = Math.toDegrees(orientationAngles[2].toDouble()).toFloat()
+        // Dynamically select the most horizontal axis to avoid gimbal lock and backwards readings
+        // rotationMatrix[7] is the Up component of the Device Y axis (Top)
+        // rotationMatrix[8] is the Up component of the Device Z axis (Screen). So -rotationMatrix[8] is Camera.
+        val yUp = kotlin.math.abs(rotationMatrix[7])
+        val cameraUp = kotlin.math.abs(rotationMatrix[8])
+
+        var rawAzimuth = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
+
+        if (cameraUp < yUp) {
+            // Camera is more horizontal than Top. Remap to track Camera (-Z) forward.
+            // We manually remap instead of using SensorManager.remapCoordinateSystem because
+            // the Android API has a bug where it produces a left-handed coordinate system
+            // for this specific axis mapping, causing the azimuth to be exactly 180 degrees off.
+            // Mapping: New X = Original X, New Y = -Original Z, New Z = Original Y
+            val remappedMatrix = FloatArray(9)
+            remappedMatrix[0] = rotationMatrix[0]
+            remappedMatrix[3] = rotationMatrix[3]
+            remappedMatrix[6] = rotationMatrix[6]
+            
+            remappedMatrix[1] = -rotationMatrix[2]
+            remappedMatrix[4] = -rotationMatrix[5]
+            remappedMatrix[7] = -rotationMatrix[8]
+            
+            remappedMatrix[2] = rotationMatrix[1]
+            remappedMatrix[5] = rotationMatrix[4]
+            remappedMatrix[8] = rotationMatrix[7]
+            
+            val remappedAngles = FloatArray(3)
+            SensorManager.getOrientation(remappedMatrix, remappedAngles)
+            rawAzimuth = Math.toDegrees(remappedAngles[0].toDouble()).toFloat()
+        }
+
+        val normalizedAzimuth = (rawAzimuth + 360f) % 360f
+
+        // Always use original physical pitch and roll for UI consistency
+        val pitch = originalPitch
+        val roll = originalRoll
 
         val now = System.currentTimeMillis()
         if (lastSampleTimestamp > 0L) {
             val dt = now - lastSampleTimestamp
-            val deltaAngle = abs(normalizeAngleDifference(normalizedAzimuth - lastRawAzimuth))
+            val deltaAngle = kotlin.math.abs(normalizeAngleDifference(normalizedAzimuth - lastRawAzimuth))
             if (deltaAngle > 35f && dt < 150L) {
                 instabilitySpikeCount++
             } else if (dt > 1000L) {
@@ -162,11 +214,16 @@ class CompassSensorManager(private val context: Context) : SensorEventListener {
         val isAligned = checkAlignment(smoothedAzimuth)
         adaptiveHapticScheduler.checkCardinalSweep(smoothedAzimuth, waypointHapticMode)
 
-        val isAccuracyLow = accuracy <= SensorManager.SENSOR_STATUS_ACCURACY_LOW
+        val isAccuracyLow = accuracy == SensorManager.SENSOR_STATUS_UNRELIABLE
         val isJittery = instabilitySpikeCount >= 3
 
+        if (isManualCalibrationActive && !isAccuracyLow && !isJittery && !currentMagInterference) {
+            isManualCalibrationActive = false
+            isUserDismissedCalibration = true
+        }
+
         val shouldCalibrate = isManualCalibrationActive ||
-                ((isAccuracyLow || isJittery) && targetBearing != null && !isUserDismissedCalibration)
+                (isAccuracyLow && targetBearing != null && !isUserDismissedCalibration)
 
         var currentNeedsCalibration = _compassState.value.needsCalibration
         if (shouldCalibrate && !currentNeedsCalibration) {
@@ -184,12 +241,19 @@ class CompassSensorManager(private val context: Context) : SensorEventListener {
             rollDegrees = roll,
             accuracy = accuracy,
             isAlignedWithTarget = isAligned,
-            needsCalibration = shouldCalibrate
+            needsCalibration = shouldCalibrate,
+            hasMagneticInterference = currentMagInterference
         )
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        val lowAcc = accuracy <= SensorManager.SENSOR_STATUS_ACCURACY_LOW
+        val lowAcc = accuracy == SensorManager.SENSOR_STATUS_UNRELIABLE
+        
+        if (isManualCalibrationActive && !lowAcc && !currentMagInterference) {
+            isManualCalibrationActive = false
+            isUserDismissedCalibration = true
+        }
+        
         val shouldCal = isManualCalibrationActive || (lowAcc && !isUserDismissedCalibration)
         _compassState.value = _compassState.value.copy(
             accuracy = accuracy,

@@ -11,5 +11,6 @@ data class BluetoothCarDevice(
     val isMonitoredCar: Boolean = true,
     val lastConnectedTimestamp: Long = System.currentTimeMillis(),
     val deviceType: String = "Car Audio / Infotainment", // "Car", "Headset", "OBD2", "Other"
-    val isCustomRenamed: Boolean = false
+    val isCustomRenamed: Boolean = false,
+    val originalName: String = ""
 )

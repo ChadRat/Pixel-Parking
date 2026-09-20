@@ -109,7 +109,7 @@ fun HistoryScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .blur(backgroundBlur)
+            .then(if (backgroundBlur > 0.5.dp) Modifier.blur(backgroundBlur) else Modifier)
             .padding(horizontal = 18.dp)
             .testTag("history_screen"),
         contentPadding = PaddingValues(top = 16.dp, bottom = 110.dp),
