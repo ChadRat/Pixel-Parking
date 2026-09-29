@@ -250,19 +250,19 @@ object HapticHelper {
                 val comp = VibrationEffect.startComposition()
                 // 6 distinct tactile clicks every 2 hours as crossed by the small hour hand:
                 // Hour 2 (~455ms)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.95f, 455)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.50f, 455)
                 // Hour 4 (~666ms)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.95f, 195)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.50f, 195)
                 // Hour 6 (~850ms, peak velocity)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f, 168)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.55f, 168)
                 // Hour 8 (~1034ms)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f, 168)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.55f, 168)
                 // Hour 10 (~1245ms)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.95f, 195)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.50f, 195)
                 // Hour 12 (~1700ms, full 12-hour rotation complete)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.95f, 439)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.50f, 439)
                 // Return to original position (~2000ms)
-                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.95f, 284)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.50f, 284)
                 vibrator.vibrate(comp.compose())
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val timings = longArrayOf(
@@ -275,13 +275,13 @@ object HapticHelper {
                     284, 16
                 )
                 val amplitudes = intArrayOf(
-                    0,   240,
-                    0,   250,
-                    0,   255,
-                    0,   255,
-                    0,   250,
-                    0,   240,
-                    0,   245
+                    0,   130,
+                    0,   135,
+                    0,   140,
+                    0,   140,
+                    0,   135,
+                    0,   130,
+                    0,   130
                 )
                 vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
             } else {
@@ -340,15 +340,16 @@ object HapticHelper {
                 comp.addPrimitive(finalPrimitive, 0.85f, 330)
                 vibrator.vibrate(comp.compose())
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // Waveform of mechanical clicks ending with a final tick as the gear settles into start position:
+                // Waveform of mechanical clicks ending with a final tick as the gear settles into start position
+                // 26ms duration ensures standard ERM motors have sufficient spin-up time to register each distinct click
                 val timings = longArrayOf(
-                    365, 18,
-                    131, 18,
-                    139, 18,
-                    181, 18,
-                    270, 18,
-                    462, 22,
-                    328, 12
+                    365, 26,
+                    131, 26,
+                    139, 26,
+                    181, 26,
+                    270, 26,
+                    462, 28,
+                    328, 16
                 )
                 val amplitudes = intArrayOf(
                     0,   220,
@@ -362,7 +363,7 @@ object HapticHelper {
                 vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(longArrayOf(365, 18, 131, 18, 139, 18, 181, 18, 270, 18, 462, 22, 328, 12), -1)
+                vibrator.vibrate(longArrayOf(365, 26, 131, 26, 139, 26, 181, 26, 270, 26, 462, 28, 328, 16), -1)
             }
         } catch (_: Exception) {}
     }
@@ -403,5 +404,90 @@ object HapticHelper {
                 vibrator.vibrate(200)
             }
         } catch (_: Exception) {}
+    }
+
+    /**
+     * Waypoint Degree Click:
+     * Subtle, crisp tactile click (moderated strength) triggered for every 2 degrees met by the internal compass.
+     */
+    fun performWaypointDegreeClick(context: Context) {
+        val vibrator = getVibrator(context) ?: return
+        if (!vibrator.hasVibrator()) return
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_CLICK)
+            ) {
+                val comp = VibrationEffect.startComposition()
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.5f)
+                vibrator.vibrate(comp.compose())
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(12, 140))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(10)
+            }
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Waypoint Straight Ahead Haptic:
+     * Just a single primitive click at maximum possible strength (1.0f scale / 255 max amplitude).
+     */
+    fun performWaypointStraightAheadHaptic(context: Context) {
+        val vibrator = getVibrator(context) ?: return
+        if (!vibrator.hasVibrator()) return
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_CLICK)
+            ) {
+                // Just a single primitive click as strong as possible
+                val comp = VibrationEffect.startComposition()
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f)
+                vibrator.vibrate(comp.compose())
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(20, 255))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(20)
+            }
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Mechanical tactile click triggered for every digit change while the user sets the timer.
+     * Matches the exact mechanical click primitive from the Settings gear icon animation.
+     */
+    fun performTimerDigitChangeHaptic(context: Context) {
+        val vibrator = getVibrator(context) ?: return
+        if (!vibrator.hasVibrator()) return
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_CLICK)
+            ) {
+                // Exact mechanical tooth click primitive used in gear animation on LRA engines
+                val comp = VibrationEffect.startComposition()
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f, 0)
+                vibrator.vibrate(comp.compose())
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // Available for all devices (including standard ERM motors):
+                // 26ms pulse at 255 amplitude provides an instant, crisp mechanical click without rattling
+                vibrator.vibrate(VibrationEffect.createOneShot(26, 255))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(26)
+            }
+        } catch (_: Exception) {
+            try {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(26)
+            } catch (_: Exception) {}
+        }
     }
 }

@@ -12,10 +12,13 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
@@ -163,6 +166,7 @@ fun MyApplicationTheme(
     oledMode: Boolean = false,
     autoSunTheme: Boolean = false,
     isDaytime: Boolean = true,
+    textWeight: Int = 400,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
@@ -202,10 +206,18 @@ fun MyApplicationTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = targetColorScheme,
-        typography = Typography,
-        shapes = PixelExpressiveShapes,
-        content = content
-    )
+    val appTypography = remember(textWeight) {
+        createAppTypography(textWeight)
+    }
+
+    CompositionLocalProvider(
+        LocalAppTextWeight provides FontWeight(textWeight)
+    ) {
+        MaterialTheme(
+            colorScheme = targetColorScheme,
+            typography = appTypography,
+            shapes = PixelExpressiveShapes,
+            content = content
+        )
+    }
 }

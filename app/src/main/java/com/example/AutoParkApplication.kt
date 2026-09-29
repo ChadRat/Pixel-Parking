@@ -41,6 +41,12 @@ class AutoParkApplication : Application() {
         // Dynamically register BluetoothDisconnectReceiver for real-time background delivery
         registerDynamicBluetoothReceiver()
 
+        // Register Activity Recognition transitions if geofence auto-park is enabled
+        val autoParkPrefs = getSharedPreferences(com.example.geofence.GeofenceManager.PREFS_NAME, MODE_PRIVATE)
+        if (autoParkPrefs.getBoolean(com.example.geofence.GeofenceManager.KEY_GEOFENCE_ENABLED, true)) {
+            com.example.geofence.GeofenceManager.registerActivityTransitions(this)
+        }
+
         // Seed initial preview data and sync paired devices
         CoroutineScope(Dispatchers.IO).launch {
             try {

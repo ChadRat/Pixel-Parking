@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -18,7 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -134,12 +134,13 @@ fun WearGoogleMapsButton(
     val isFoundCarMode = manualModeOverride ?: isVeryClose
 
     val progress = scrollProgress.coerceIn(0f, 1f)
-    val easedProgress = FastOutSlowInEasing.transform(progress)
+    // Slower, gentler reveal curve (duration extended via cubic-bezier / ease-out)
+    val easedProgress = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f).transform(progress)
 
     val animatedWidth = lerp(48.dp, 162.dp, easedProgress)
     val animatedHeight = lerp(22.dp, 68.dp, easedProgress)
 
-    val contentAlpha = ((easedProgress - 0.22f) / 0.78f).coerceIn(0f, 1f)
+    val contentAlpha = ((easedProgress - 0.28f) / 0.72f).coerceIn(0f, 1f)
     val contentScale = 0.70f + (0.30f * contentAlpha)
 
     val targetBgColor = if (isFoundCarMode) foundContainerColor else mapsContainerColor
@@ -147,13 +148,13 @@ fun WearGoogleMapsButton(
 
     val currentContainerColor by animateColorAsState(
         targetValue = if (isPressedDown) targetBgColor.copy(alpha = 0.82f) else targetBgColor,
-        animationSpec = tween(durationMillis = 260),
+        animationSpec = tween(durationMillis = 380),
         label = "action_btn_bg"
     )
 
     val currentContentColor by animateColorAsState(
         targetValue = targetFgColor,
-        animationSpec = tween(durationMillis = 260),
+        animationSpec = tween(durationMillis = 380),
         label = "action_btn_fg"
     )
 
@@ -221,18 +222,27 @@ fun WearGoogleMapsButton(
                     .alpha(contentAlpha)
                     .scale(contentScale)
             ) {
-                Icon(
-                    imageVector = if (isFoundCarMode) Icons.Filled.CheckCircle else Icons.Filled.Map,
-                    contentDescription = null,
-                    tint = currentContentColor,
-                    modifier = Modifier.size(18.dp)
-                )
+                if (isFoundCarMode) {
+                    WearScallopCheckMarkIcon(
+                        containerColor = currentContentColor,
+                        checkColor = currentContainerColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.Map,
+                        contentDescription = null,
+                        tint = currentContentColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = if (isFoundCarMode) "Found Car" else "Google Maps",
                     color = currentContentColor,
+                    fontFamily = com.PixelParking.wear.theme.WearHeavyRoundFont,
                     fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.Bold
                 )
             }
         }

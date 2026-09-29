@@ -63,4 +63,44 @@ class ExampleUnitTest {
         assertTrue(modes.contains(com.example.ui.theme.AppThemeMode.LIGHT))
         assertTrue(modes.contains(com.example.ui.theme.AppThemeMode.DARK))
     }
+
+    @Test
+    fun testSpotEntryTypeClassification() {
+        // Manual entry
+        val manualSpot = com.example.data.entity.ParkingSpot(
+            latitude = 37.7749,
+            longitude = -122.4194,
+            spotName = "Parked Car",
+            isAutoSaved = false,
+            bluetoothDeviceName = "Manual GPS Entry",
+            bluetoothDeviceAddress = null
+        )
+        org.junit.Assert.assertFalse(com.example.data.entity.isGeofenceEntry(manualSpot))
+        org.junit.Assert.assertFalse(com.example.data.entity.isBluetoothEntry(manualSpot))
+
+        // Geofence entry
+        val geofenceSpot = com.example.data.entity.ParkingSpot(
+            latitude = 37.7749,
+            longitude = -122.4194,
+            spotName = "Walking Detection",
+            isAutoSaved = true,
+            bluetoothDeviceName = "Walking Detection",
+            bluetoothDeviceAddress = "GEOFENCE_WALKING_DETECTION"
+        )
+        org.junit.Assert.assertTrue(com.example.data.entity.isGeofenceEntry(geofenceSpot))
+        org.junit.Assert.assertFalse(com.example.data.entity.isBluetoothEntry(geofenceSpot))
+
+        // Bluetooth entry
+        val btSpot = com.example.data.entity.ParkingSpot(
+            latitude = 37.7749,
+            longitude = -122.4194,
+            spotName = "Car BT (Audi MMI)",
+            isAutoSaved = true,
+            bluetoothDeviceName = "Audi MMI",
+            bluetoothDeviceAddress = "00:11:22:33:44:55",
+            note = "Automatically saved upon Bluetooth disconnection."
+        )
+        org.junit.Assert.assertFalse(com.example.data.entity.isGeofenceEntry(btSpot))
+        org.junit.Assert.assertTrue(com.example.data.entity.isBluetoothEntry(btSpot))
+    }
 }

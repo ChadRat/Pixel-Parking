@@ -514,4 +514,12 @@ object LocationHelper {
             String.format(Locale.US, "%.2f mi", feet / 5280f)
         }
     }
+
+    fun formatDistanceWithUnit(meters: Float, unit: DistanceUnit): String {
+        return if (unit == DistanceUnit.IMPERIAL) {
+            formatDistanceFeet(meters)
+        } else {
+            formatDistance(meters)
+        }
+    }
 }

@@ -32,18 +32,21 @@ class WearDataLayerListenerService : WearableListenerService() {
                         val name = dataMap.getString("spot_name", "Car") ?: "Car"
                         val address = dataMap.getString("address", "") ?: ""
                         val timestamp = dataMap.getLong("timestamp", 0L)
+                        val crownOnRight = if (dataMap.containsKey("crown_on_right")) dataMap.getBoolean("crown_on_right") else null
 
-                        Log.d(TAG, "Received active parking spot from DataLayer: hasSpot=$hasSpot, lat=$lat, lng=$lng")
-                        stateHolder.updateSpot(hasSpot, lat, lng, alt, name, address, timestamp)
+                        Log.d(TAG, "Received active parking spot from DataLayer: hasSpot=$hasSpot, lat=$lat, lng=$lng, crownOnRight=$crownOnRight")
+                        stateHolder.updateSpot(hasSpot, lat, lng, alt, name, address, timestamp, crownOnRight)
                     } catch (e: Exception) {
                         Log.e(TAG, "Error parsing parking spot DataMap", e)
                     }
                 } else if (uri.path == PATH_CONFIG) {
                     try {
                         val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
-                        val crownOnRight = dataMap.getBoolean("crown_on_right", true)
-                        Log.d(TAG, "Received crown config from DataLayer: crownOnRight=$crownOnRight")
-                        stateHolder.updateCrownPosition(crownOnRight)
+                        if (dataMap.containsKey("crown_on_right")) {
+                            val crownOnRight = dataMap.getBoolean("crown_on_right", true)
+                            Log.d(TAG, "Received crown config from DataLayer: crownOnRight=$crownOnRight")
+                            stateHolder.updateCrownPosition(crownOnRight)
+                        }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error parsing config DataMap", e)
                     }

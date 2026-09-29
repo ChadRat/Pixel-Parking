@@ -60,6 +60,7 @@ class CompassSensorManager(private val context: Context) : SensorEventListener {
     private var lastRawAzimuth = 0f
     private var lastSampleTimestamp = 0L
     private var isUserDismissedCalibration = false
+    private var isUserDismissedInterference = false
     private var isManualCalibrationActive = false
     private var gravityValues: FloatArray? = null
     private var geomagneticValues: FloatArray? = null
@@ -69,6 +70,7 @@ class CompassSensorManager(private val context: Context) : SensorEventListener {
 
     fun triggerManualCalibration() {
         isUserDismissedCalibration = false
+        isUserDismissedInterference = false
         isManualCalibrationActive = true
         instabilitySpikeCount = 0
         // Restart sensor listening to reset OS-level magnetic sensor matrix and buffers
@@ -81,8 +83,12 @@ class CompassSensorManager(private val context: Context) : SensorEventListener {
     fun dismissCalibration() {
         isManualCalibrationActive = false
         isUserDismissedCalibration = true
+        isUserDismissedInterference = true
         instabilitySpikeCount = 0
-        _compassState.value = _compassState.value.copy(needsCalibration = false)
+        _compassState.value = _compassState.value.copy(
+            needsCalibration = false,
+            hasMagneticInterference = false
+        )
         HapticHelper.performConfirmationHaptic(context, hapticProfile)
     }
 
@@ -235,6 +241,11 @@ class CompassSensorManager(private val context: Context) : SensorEventListener {
             HapticHelper.performConfirmationHaptic(context, hapticProfile)
         }
 
+        if (!currentMagInterference) {
+            isUserDismissedInterference = false
+        }
+        val effectiveInterference = currentMagInterference && !isUserDismissedInterference
+
         _compassState.value = CompassState(
             azimuthDegrees = smoothedAzimuth,
             pitchDegrees = pitch,
@@ -242,7 +253,7 @@ class CompassSensorManager(private val context: Context) : SensorEventListener {
             accuracy = accuracy,
             isAlignedWithTarget = isAligned,
             needsCalibration = shouldCalibrate,
-            hasMagneticInterference = currentMagInterference
+            hasMagneticInterference = effectiveInterference
         )
     }
 
@@ -255,9 +266,11 @@ class CompassSensorManager(private val context: Context) : SensorEventListener {
         }
         
         val shouldCal = isManualCalibrationActive || (lowAcc && !isUserDismissedCalibration)
+        val effectiveInterference = currentMagInterference && !isUserDismissedInterference
         _compassState.value = _compassState.value.copy(
             accuracy = accuracy,
-            needsCalibration = shouldCal
+            needsCalibration = shouldCal,
+            hasMagneticInterference = effectiveInterference
         )
     }
 

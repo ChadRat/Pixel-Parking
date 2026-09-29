@@ -16,7 +16,7 @@ import java.io.FileOutputStream
 object WearApkManager {
 
     private const val ASSET_FILE_NAME = "wear-debug.apk"
-    const val DEFAULT_WEAR_APP_VERSION = "0.1"
+    const val DEFAULT_WEAR_APP_VERSION = "1.2"
 
     fun getWearAppVersion(context: Context): String {
         return try {

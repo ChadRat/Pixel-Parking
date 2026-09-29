@@ -26,14 +26,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.NearMe
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -49,11 +52,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,7 +74,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.entity.ParkingSpot
+import com.example.data.entity.isBluetoothEntry
+import com.example.data.entity.isGeofenceEntry
 import com.example.ui.components.EditSpotDialog
+import com.example.ui.components.GeofenceIcon
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.PixelRed
 import com.example.ui.viewmodel.ParkingViewModel
@@ -91,16 +99,26 @@ fun HistoryScreen(
     var showClearDialog by remember { mutableStateOf(false) }
     var editingSpot by remember { mutableStateOf<ParkingSpot?>(null) }
 
+    val pinnedSpotIds by viewModel.pinnedSpotIds.collectAsStateWithLifecycle()
+
     val filteredSpots = spots.filter {
         it.spotName.contains(searchQuery, ignoreCase = true) ||
                 it.address.contains(searchQuery, ignoreCase = true) ||
                 it.floorLevel.contains(searchQuery, ignoreCase = true) ||
                 it.note.contains(searchQuery, ignoreCase = true)
-    }
+    }.sortedWith(
+        compareByDescending<ParkingSpot> { pinnedSpotIds.contains(it.id) }
+            .thenByDescending { it.timestamp }
+    )
 
     val isSheetOpen = editingSpot != null
+    val carBadgeStyle by viewModel.carBadgeStyle.collectAsState()
+    val capyVariant by viewModel.capyVariant.collectAsState()
+    val isTimerRunning by viewModel.timerIsRunning.collectAsStateWithLifecycle()
+    val timerRemainingSeconds by viewModel.timerRemainingSeconds.collectAsStateWithLifecycle()
+    val showTimerDialog by viewModel.showTimerDialog.collectAsStateWithLifecycle()
     val backgroundBlur by animateDpAsState(
-        targetValue = if (isSheetOpen) 20.dp else 0.dp,
+        targetValue = if (isSheetOpen && !showTimerDialog) 20.dp else 0.dp,
         label = "history_blur"
     )
 
@@ -206,8 +224,11 @@ fun HistoryScreen(
             }
         } else {
             items(filteredSpots, key = { it.id }) { spot ->
+                val isPinned = pinnedSpotIds.contains(spot.id)
                 SwipeableHistorySpotRow(
                     spot = spot,
+                    isPinned = isPinned,
+                    onTogglePin = { viewModel.togglePinSpot(spot.id) },
                     onNavigateMaps = { viewModel.openGoogleMapsNavigation(context, spot) },
                     onNavigateCompass = { viewModel.setActiveNavigationTarget(spot) },
                     onShare = { viewModel.shareParkingLocation(context, spot) },
@@ -222,6 +243,12 @@ fun HistoryScreen(
     if (editingSpot != null) {
         EditSpotDialog(
             initialSpot = editingSpot,
+            carBadgeStyle = carBadgeStyle,
+            capyVariant = capyVariant,
+            isTimerRunning = isTimerRunning,
+            timerRemainingSeconds = timerRemainingSeconds,
+            isTimerOpen = showTimerDialog,
+            onOpenTimer = { viewModel.openParkingTimer() },
             onDismiss = { editingSpot = null },
             onSave = { name, floor, note, customLat, customLng, customAddress ->
                 editingSpot?.let { spot ->
@@ -295,6 +322,8 @@ fun HistoryScreen(
 @Composable
 fun SwipeableHistorySpotRow(
     spot: ParkingSpot,
+    isPinned: Boolean = false,
+    onTogglePin: () -> Unit = {},
     onNavigateMaps: () -> Unit,
     onNavigateCompass: () -> Unit,
     onShare: () -> Unit,
@@ -394,6 +423,8 @@ fun SwipeableHistorySpotRow(
         // Foreground History Card
         HistorySpotCardContent(
             spot = spot,
+            isPinned = isPinned,
+            onTogglePin = onTogglePin,
             onNavigateMaps = onNavigateMaps,
             onNavigateCompass = onNavigateCompass,
             onShare = onShare,
@@ -433,6 +464,8 @@ fun SwipeableHistorySpotRow(
 @Composable
 fun HistorySpotCardContent(
     spot: ParkingSpot,
+    isPinned: Boolean = false,
+    onTogglePin: () -> Unit = {},
     onNavigateMaps: () -> Unit,
     onNavigateCompass: () -> Unit,
     onShare: () -> Unit,
@@ -463,19 +496,36 @@ fun HistorySpotCardContent(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Circular car icon
+                // Circular car or geofence icon
+                // Circular car, geofence, or bluetooth icon
+                val isGeo = spot.isGeofenceEntry
+                val isBt = spot.isBluetoothEntry
                 Surface(
                     shape = CircleShape,
                     color = if (spot.isActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.size(38.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.DirectionsCar,
-                            contentDescription = null,
-                            tint = if (spot.isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(18.dp)
-                        )
+                        if (isGeo) {
+                            GeofenceIcon(
+                                modifier = Modifier.size(20.dp),
+                                tint = if (spot.isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        } else if (isBt) {
+                            Icon(
+                                imageVector = Icons.Default.Bluetooth,
+                                contentDescription = "Bluetooth Saved Spot",
+                                tint = if (spot.isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.DirectionsCar,
+                                contentDescription = null,
+                                tint = if (spot.isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 
@@ -487,15 +537,30 @@ fun HistorySpotCardContent(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = spot.spotName,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.weight(1f, fill = false)
-                        )
+                        ) {
+                            if (isPinned) {
+                                Icon(
+                                    imageVector = Icons.Filled.PushPin,
+                                    contentDescription = "Pinned",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .size(13.dp)
+                                        .graphicsLayer { rotationZ = -25f }
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            Text(
+                                text = spot.spotName,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = dateStr,
@@ -518,7 +583,7 @@ fun HistorySpotCardContent(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Action Buttons: Slimmer Pixel-style tonal action pills (without delete button)
+            // Action Buttons: Slimmer Pixel-style tonal action pills + simple pin & share buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -552,18 +617,42 @@ fun HistorySpotCardContent(
                     }
                 }
 
-                IconButton(
-                    onClick = onShare,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .testTag("history_share_btn_${spot.id}")
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Icon(
-                        Icons.Default.Share,
-                        contentDescription = "Share",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    // Small simple pin button
+                    IconButton(
+                        onClick = onTogglePin,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("history_pin_btn_${spot.id}")
+                    ) {
+                        Icon(
+                            imageVector = if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                            contentDescription = if (isPinned) "Unpin entry" else "Pin entry to top",
+                            tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .size(16.dp)
+                                .graphicsLayer {
+                                    rotationZ = if (isPinned) -25f else 0f
+                                }
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onShare,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("history_share_btn_${spot.id}")
+                    ) {
+                        Icon(
+                            Icons.Default.Share,
+                            contentDescription = "Share",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
         }

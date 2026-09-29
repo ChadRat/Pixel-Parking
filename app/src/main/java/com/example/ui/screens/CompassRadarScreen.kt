@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -54,9 +55,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.components.EditSpotDialog
 import com.example.ui.components.ParkingTimerButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,6 +78,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.entity.ParkingSpot
+import com.example.data.entity.isGeofenceEntry
 import com.example.sensor.CompassState
 import com.example.ui.components.CompassRadarNeedle
 import com.example.ui.i18n.LocalAppStrings
@@ -101,10 +105,20 @@ fun CompassRadarScreen(
     var showNoSpotAlert by remember { mutableStateOf(false) }
     var showCalibrationDialog by remember { mutableStateOf(false) }
     var currentNoteText by remember { mutableStateOf(activeSpot?.note ?: "") }
+    var isInterferenceDismissed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(compassState.hasMagneticInterference, compassState.needsCalibration) {
+        if (!compassState.hasMagneticInterference && !compassState.needsCalibration) {
+            isInterferenceDismissed = false
+        }
+    }
 
     val isTimerRunning by viewModel.timerIsRunning.collectAsStateWithLifecycle()
     val timerRemainingSeconds by viewModel.timerRemainingSeconds.collectAsStateWithLifecycle()
     val isParkingTimerEnabled by viewModel.isParkingTimerFeatureEnabled.collectAsStateWithLifecycle()
+    val showTimerDialog by viewModel.showTimerDialog.collectAsStateWithLifecycle()
+    val carBadgeStyle by viewModel.carBadgeStyle.collectAsStateWithLifecycle()
+    val capyVariant by viewModel.capyVariant.collectAsStateWithLifecycle()
 
     DisposableEffect(Unit) {
         viewModel.startCompass()
@@ -127,23 +141,46 @@ fun CompassRadarScreen(
 
     val isAligned = effectiveIsAligned
     val localeSep = java.text.DecimalFormatSymbols.getInstance().decimalSeparator
+    val appLanguage by viewModel.appLanguage.collectAsStateWithLifecycle()
+    val distanceUnit by viewModel.distanceUnit.collectAsStateWithLifecycle()
+    val isImperial = appLanguage == com.example.ui.i18n.AppLanguage.ENGLISH && distanceUnit == com.example.sensor.DistanceUnit.IMPERIAL
+
     val distanceDisplay = if (isBtMode) {
-        if (btProximityState.distanceMeters < 2f) {
-            "< 2 ${strings.meters}"
+        if (isImperial) {
+            val feet = btProximityState.distanceMeters * 3.28084f
+            if (feet < 6f) "< 6 ft" else "${feet.toInt()} ft"
         } else {
-            "${btProximityState.distanceMeters.toInt()} ${strings.meters}"
+            if (btProximityState.distanceMeters < 2f) {
+                "< 2 ${strings.meters}"
+            } else {
+                "${btProximityState.distanceMeters.toInt()} ${strings.meters}"
+            }
         }
     } else when {
         activeSpot == null -> "--"
         !telemetry.hasActiveTarget -> {
-            if (telemetry.distanceMeters > 0f) "${telemetry.distanceMeters.toInt()} ${strings.meters}" else strings.locating
+            if (telemetry.distanceMeters > 0f) {
+                if (isImperial) {
+                    val feet = telemetry.distanceMeters * 3.28084f
+                    if (feet < 5280) "${feet.toInt()} ft" else String.format(java.util.Locale.US, "%.1f mi", feet / 5280f)
+                } else {
+                    "${telemetry.distanceMeters.toInt()} ${strings.meters}"
+                }
+            } else strings.locating
         }
         telemetry.formattedDistance.isBlank() || telemetry.formattedDistance == "No GPS Fix" -> {
-            if (telemetry.distanceMeters > 0f) "${telemetry.distanceMeters.toInt()} ${strings.meters}" else strings.locating
+            if (telemetry.distanceMeters > 0f) {
+                if (isImperial) {
+                    val feet = telemetry.distanceMeters * 3.28084f
+                    if (feet < 5280) "${feet.toInt()} ft" else String.format(java.util.Locale.US, "%.1f mi", feet / 5280f)
+                } else {
+                    "${telemetry.distanceMeters.toInt()} ${strings.meters}"
+                }
+            } else strings.locating
         }
         else -> {
             val formatted = telemetry.formattedDistance.replace('.', localeSep)
-            if (strings.meters != "m" && formatted.endsWith("m")) {
+            if (strings.meters != "m" && formatted.endsWith("m") && !formatted.endsWith("km")) {
                 formatted.replace("m", strings.meters)
             } else {
                 formatted
@@ -238,18 +275,23 @@ fun CompassRadarScreen(
                 // Spacer matches the 48dp options button to keep spotDisplayName centered
                 Spacer(modifier = Modifier.size(48.dp))
 
-                Text(
-                    text = spotDisplayName,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
+                Row(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(horizontal = 8.dp)
-                )
+                        .padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = spotDisplayName,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                }
 
                 Box {
                     IconButton(
@@ -276,6 +318,15 @@ fun CompassRadarScreen(
                                 showMenu = false
                                 viewModel.recalibrateCompass()
                                 showCalibrationDialog = true
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = { Text(strings.parkingTimerTitle, color = MaterialTheme.colorScheme.onSurface) },
+                            leadingIcon = { Icon(Icons.Default.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                            onClick = {
+                                showMenu = false
+                                viewModel.openParkingTimer()
                             }
                         )
 
@@ -408,7 +459,7 @@ fun CompassRadarScreen(
 
             // AUTOMATIC COMPASS CALIBRATION BANNER
             AnimatedVisibility(
-                visible = compassState.needsCalibration || compassState.hasMagneticInterference,
+                visible = (compassState.needsCalibration || compassState.hasMagneticInterference) && !isInterferenceDismissed,
                 enter = fadeIn() + slideInVertically { -it / 2 },
                 exit = fadeOut() + slideOutVertically { -it / 2 }
             ) {
@@ -456,7 +507,10 @@ fun CompassRadarScreen(
                             )
                         }
                         IconButton(
-                            onClick = { viewModel.dismissCompassCalibration() },
+                            onClick = {
+                                isInterferenceDismissed = true
+                                viewModel.dismissCompassCalibration()
+                            },
                             modifier = Modifier.size(28.dp)
                         ) {
                             Icon(
@@ -568,7 +622,7 @@ fun CompassRadarScreen(
                     ParkingTimerButton(
                         isRunning = isTimerRunning,
                         remainingSeconds = timerRemainingSeconds,
-                        onClick = { viewModel.openParkingTimer() },
+                        viewModel = viewModel,
                         isFullWidth = false
                     )
                 }
@@ -579,36 +633,19 @@ fun CompassRadarScreen(
                     enter = fadeIn() + slideInVertically { it / 2 },
                     exit = fadeOut() + slideOutVertically { it / 2 }
                 ) {
-                    Button(
+                    com.example.ui.components.FoundCarTimerStyleButton(
+                        text = strings.foundCar,
                         onClick = {
                             viewModel.markCarFound()
                             onBack()
                         },
-                        shape = RoundedCornerShape(18.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        modifier = Modifier
-                            .height(48.dp)
-                            .testTag("waypoint_found_car_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = strings.foundCar,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+                        isFullWidth = false,
+                        testTag = "waypoint_found_car_button"
+                    )
                 }
 
-                Button(
+                com.example.ui.components.WaypointMapsTimerStyleButton(
+                    text = strings.googleMaps,
                     onClick = {
                         if (activeSpot != null) {
                             viewModel.openGoogleMapsNavigation(context, activeSpot)
@@ -616,28 +653,9 @@ fun CompassRadarScreen(
                             showNoSpotAlert = true
                         }
                     },
-                    shape = RoundedCornerShape(18.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ),
-                    modifier = Modifier
-                        .height(48.dp)
-                        .testTag("waypoint_maps_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Map,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = strings.googleMaps,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+                    isFullWidth = false,
+                    testTag = "waypoint_maps_button"
+                )
             }
 
             Spacer(
@@ -649,49 +667,22 @@ fun CompassRadarScreen(
     }
 
     if (showEditNoteDialog && activeSpot != null) {
-        AlertDialog(
-            onDismissRequest = { showEditNoteDialog = false },
-            shape = RoundedCornerShape(28.dp),
-            title = {
-                Text(
-                    strings.editDetails,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+        EditSpotDialog(
+            initialSpot = activeSpot,
+            carBadgeStyle = carBadgeStyle,
+            capyVariant = capyVariant,
+            isTimerRunning = isTimerRunning,
+            timerRemainingSeconds = timerRemainingSeconds,
+            isTimerOpen = showTimerDialog,
+            viewModel = viewModel,
+            onOpenTimer = {
+                viewModel.openParkingTimer()
             },
-            text = {
-                OutlinedTextField(
-                    value = currentNoteText,
-                    onValueChange = { currentNoteText = it },
-                    placeholder = { Text(strings.enterNotes) },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.updateSpotNote(activeSpot.id, currentNoteText)
-                        showEditNoteDialog = false
-                    },
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Text(strings.save)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showEditNoteDialog = false },
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Text(strings.cancel)
-                }
-            },
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            onDismiss = { showEditNoteDialog = false },
+            onSave = { name, floor, note, _, _, _ ->
+                viewModel.updateSpotDetails(activeSpot.id, name, floor, note)
+                showEditNoteDialog = false
+            }
         )
     }
 
@@ -727,6 +718,7 @@ fun CompassRadarScreen(
             onDismissRequest = {
                 viewModel.dismissCompassCalibration()
                 showCalibrationDialog = false
+                isInterferenceDismissed = true
             },
             shape = RoundedCornerShape(28.dp),
             icon = {
@@ -800,6 +792,7 @@ fun CompassRadarScreen(
                     onClick = {
                         viewModel.dismissCompassCalibration()
                         showCalibrationDialog = false
+                        isInterferenceDismissed = true
                         Toast.makeText(context, strings.compassRecalibrated, Toast.LENGTH_SHORT).show()
                     },
                     shape = RoundedCornerShape(20.dp),

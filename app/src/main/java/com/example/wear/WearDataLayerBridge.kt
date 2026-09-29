@@ -32,6 +32,7 @@ class WearDataLayerBridge private constructor(private val context: Context) {
         const val PATH_TELEMETRY = "/parking_telemetry"
         const val PATH_CONFIG = "/parking_config"
         const val PATH_REQUEST_SYNC = "/request_sync"
+        const val PATH_RESTORE_LATEST_SPOT = "/restore_latest_spot"
 
         @Volatile
         private var INSTANCE: WearDataLayerBridge? = null
@@ -85,6 +86,10 @@ class WearDataLayerBridge private constructor(private val context: Context) {
                     dataMap.putString("vehicle_name", spot?.bluetoothDeviceName ?: spot?.spotName ?: "")
                     dataMap.putLong("timestamp", spot?.timestamp ?: 0L)
                     dataMap.putLong("sync_timestamp", System.currentTimeMillis())
+
+                    val prefs = context.getSharedPreferences("pixel_parking_prefs", Context.MODE_PRIVATE)
+                    val crownOnRight = prefs.getBoolean("wear_crown_on_right", true)
+                    dataMap.putBoolean("crown_on_right", crownOnRight)
                 }
 
                 val putDataReq = putDataMapReq.asPutDataRequest().setUrgent()

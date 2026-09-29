@@ -99,6 +99,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -108,9 +109,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.absoluteValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
+import com.example.receiver.ParkingAlarmDismissReceiver
 import com.example.ui.components.AnimatedNavIcon
 import com.example.ui.components.ParkingAlarmAlertDialog
-import com.example.ui.components.ParkingTimerDialog
+import com.example.ui.components.ParkingAlarmNotificationBanner
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.i18n.getAppStrings
 import com.example.ui.screens.AboutScreen
@@ -145,6 +154,7 @@ class MainActivity : ComponentActivity() {
             val autoSunTheme by viewModel.autoSunTheme.collectAsStateWithLifecycle()
             val isDaytime by viewModel.isDaytime.collectAsStateWithLifecycle()
             val appLanguage by viewModel.appLanguage.collectAsStateWithLifecycle()
+            val textWeight by viewModel.devTextWeight.collectAsStateWithLifecycle()
             val strings = remember(appLanguage) { getAppStrings(appLanguage) }
 
             CompositionLocalProvider(LocalAppStrings provides strings) {
@@ -153,7 +163,8 @@ class MainActivity : ComponentActivity() {
                     dynamicColor = dynamicColor,
                     oledMode = oledMode,
                     autoSunTheme = autoSunTheme,
-                    isDaytime = isDaytime
+                    isDaytime = isDaytime,
+                    textWeight = textWeight
                 ) {
                     PixelParkingApp(viewModel)
                 }
@@ -226,6 +237,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun PixelParkingApp(viewModel: ParkingViewModel) {
+    val context = LocalContext.current
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val activeSpot by viewModel.activeSpot.collectAsStateWithLifecycle()
     val allSpots by viewModel.allSpots.collectAsStateWithLifecycle()
@@ -249,6 +261,29 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
         initialPage = 0,
         pageCount = { mainTabs.size }
     )
+
+    // Listen for notification action bar dismiss events from lockscreen or notification tray
+    DisposableEffect(Unit) {
+        val filter = IntentFilter(ParkingAlarmDismissReceiver.ACTION_DISMISS_ALARM)
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                viewModel.dismissTimerAlarm()
+            }
+        }
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        onDispose {
+            try {
+                context.unregisterReceiver(receiver)
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     // Handle system device back button to return to previous page/tab instead of exiting app
     BackHandler(enabled = viewModel.canNavigateBack || selectedTab != AppTab.DASHBOARD) {
@@ -367,7 +402,7 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
     }
 
     val backgroundBlur by animateDpAsState(
-        targetValue = if (selectedTab == AppTab.BLUETOOTH_AUTO || selectedTab == AppTab.ABOUT || showTimerDialog) 20.dp else 0.dp,
+        targetValue = if (selectedTab == AppTab.BLUETOOTH_AUTO || selectedTab == AppTab.ABOUT) 20.dp else 0.dp,
         label = "bt_bg_blur"
     )
 
@@ -526,20 +561,6 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
             AboutScreen(
                 viewModel = viewModel,
                 onBack = { viewModel.selectTab(AppTab.SETTINGS) }
-            )
-        }
-
-        if (showTimerDialog) {
-            ParkingTimerDialog(
-                viewModel = viewModel,
-                onDismiss = { viewModel.closeParkingTimer() }
-            )
-        }
-
-        if (isAlarmActive) {
-            ParkingAlarmAlertDialog(
-                onDismiss = { viewModel.dismissTimerAlarm() },
-                onSnooze = { viewModel.snoozeTimerAlarm(5) }
             )
         }
     }

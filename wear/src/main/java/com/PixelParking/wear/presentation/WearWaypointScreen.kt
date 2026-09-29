@@ -137,12 +137,12 @@ fun WearWaypointScreen(
         val scrollVal = scrollState.value.toFloat()
 
         // Bottom Action Button scroll growth progress:
-        // Starts expanding with a bigger delay (only after scrolling past 60px) and smoothly reaches full bowl shape by 140px.
+        // Starts expanding gradually after scrolling past 60px with a slightly slower, smoother revealing animation
         val buttonScrollProgress = remember(scrollVal) {
             if (scrollVal <= 60f) {
                 0f
             } else {
-                ((scrollVal - 60f) / 80f).coerceIn(0f, 1f)
+                ((scrollVal - 60f) / 120f).coerceIn(0f, 1f)
             }
         }
 
@@ -168,6 +168,11 @@ fun WearWaypointScreen(
                         if (!hasActiveTarget) {
                             Modifier.pointerInput(Unit) {
                                 detectTapGestures(
+                                    onDoubleTap = {
+                                        // Rapid double tap restores navigation to the latest saved parking location from history
+                                        WearHapticHelper.performClickHaptic(context)
+                                        stateHolder.restoreLatestSpotFromHistory()
+                                    },
                                     onLongPress = {
                                         val loc = sensorManager.currentLocation.value
                                         val lat = loc?.latitude ?: 0.0

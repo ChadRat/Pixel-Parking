@@ -11,8 +11,8 @@ android {
     applicationId = "com.PixelParking.app"
     minSdk = 26
     targetSdk = 36
-    versionCode = 1
-    versionName = "0.1"
+    versionCode = 12
+    versionName = "1.2"
   }
 
   signingConfigs {
@@ -61,4 +61,5 @@ dependencies {
   implementation(libs.play.services.location)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
+  implementation(libs.kotlinx.coroutines.play.services)
 }

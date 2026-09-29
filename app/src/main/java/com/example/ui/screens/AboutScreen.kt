@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
@@ -71,16 +72,8 @@ fun AboutSheet(
     val coroutineScope = rememberCoroutineScope()
     var showLicenseDetail by remember { mutableStateOf(false) }
 
-    // Opens at 75% of screen height by default, smoothly enlarges to 95% when viewing license
-    val targetFraction = if (showLicenseDetail) 0.95f else 0.75f
-    val animatedFraction by animateFloatAsState(
-        targetValue = targetFraction,
-        animationSpec = tween(
-            durationMillis = 380,
-            easing = FastOutSlowInEasing
-        ),
-        label = "aboutSheetHeightFraction"
-    )
+    val configuration = LocalConfiguration.current
+    val sheetHeight = configuration.screenHeightDp.dp * 0.85f
 
     BackHandler(enabled = showLicenseDetail) {
         showLicenseDetail = false
@@ -129,7 +122,7 @@ fun AboutSheet(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(animatedFraction)
+                    .height(sheetHeight)
                     .navigationBarsPadding()
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 16.dp)

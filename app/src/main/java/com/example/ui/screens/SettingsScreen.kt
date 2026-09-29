@@ -60,8 +60,10 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Mood
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.NightsStay
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Public
@@ -75,6 +77,8 @@ import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.WbTwilight
 import androidx.compose.ui.draw.rotate
+import com.example.ui.components.TimerRemindersSelectorRow
+import com.example.util.HapticHelper
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -82,10 +86,13 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import com.example.ui.components.GeofenceIcon
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -113,9 +120,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.BuildConfig
 import com.example.ui.components.AnimatedNavIcon
+import com.example.ui.components.BabyBottleIcon
 import com.example.ui.components.CarBadgeStyle
 import com.example.ui.components.CapyVariant
 import com.example.ui.components.FullGearNavIcon
+import com.example.sensor.DistanceUnit
 import com.example.ui.i18n.AppLanguage
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.AppThemeMode
@@ -140,14 +149,17 @@ fun SettingsScreen(
     val currentCapyVariant by viewModel.capyVariant.collectAsState()
     val isDevCapyCarsEnabled by viewModel.isDevCapyCarsEnabled.collectAsState()
     val currentLanguage by viewModel.appLanguage.collectAsState()
-    val alarmSoundTitle by viewModel.alarmSoundTitle.collectAsState()
+    val distanceUnit by viewModel.distanceUnit.collectAsState()
     val isParkingTimerEnabled by viewModel.isParkingTimerFeatureEnabled.collectAsState()
+    val timerReminders by viewModel.timerRemindersMinutes.collectAsState()
     val activeSpot by viewModel.activeSpot.collectAsState()
     val telemetry by viewModel.navigationTelemetry.collectAsState()
     val isCrownOnRight by viewModel.wearCrownOnRight.collectAsState()
+    val isGeofenceAutoPark by viewModel.isGeofenceAutoParkEnabled.collectAsState()
+    val isDeveloperUnlocked by viewModel.isDeveloperUnlocked.collectAsState()
 
-    var isAlarmPreviewing by remember { mutableStateOf(false) }
     var isCrownOptionsExpanded by remember { mutableStateOf(false) }
+    var isMilesExpanded by rememberSaveable { mutableStateOf(distanceUnit == DistanceUnit.IMPERIAL) }
 
     val ringtonePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -246,16 +258,109 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
-                        Switch(
-                            checked = currentLanguage == AppLanguage.GREEK,
-                            onCheckedChange = { isGreek ->
-                                viewModel.setAppLanguage(if (isGreek) AppLanguage.GREEK else AppLanguage.ENGLISH)
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                                checkedTrackColor = MaterialTheme.colorScheme.primary
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (currentLanguage == AppLanguage.ENGLISH) {
+                                val arrowRotation by animateFloatAsState(
+                                    targetValue = if (isMilesExpanded) 180f else 0f,
+                                    label = "miles_arrow_rot"
+                                )
+                                IconButton(
+                                    onClick = { isMilesExpanded = !isMilesExpanded },
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .testTag("distance_unit_arrow_btn")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.KeyboardArrowDown,
+                                        contentDescription = "Toggle Miles setting",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .graphicsLayer { rotationZ = arrowRotation }
+                                    )
+                                }
+                            }
+
+                            Switch(
+                                checked = currentLanguage == AppLanguage.GREEK,
+                                onCheckedChange = { isGreek ->
+                                    viewModel.setAppLanguage(if (isGreek) AppLanguage.GREEK else AppLanguage.ENGLISH)
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary
+                                )
                             )
-                        )
+                        }
+                    }
+
+                    // "Miles" toggle similar to the rest of the settings ui (without an icon)
+                    AnimatedVisibility(
+                        visible = currentLanguage == AppLanguage.ENGLISH && isMilesExpanded,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Column {
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            WavyDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                waveLength = 36f,
+                                amplitude = 9f,
+                                thickness = 6f
+                            )
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val newUnit = if (distanceUnit == DistanceUnit.IMPERIAL) DistanceUnit.METRIC else DistanceUnit.IMPERIAL
+                                        viewModel.setDistanceUnit(newUnit)
+                                    },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text(
+                                        text = "Miles",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        lineHeight = 18.sp
+                                    )
+                                    Text(
+                                        text = "Change the metric system (kilometres) to imperial miles",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(16.dp))
+
+                                Switch(
+                                    checked = distanceUnit == DistanceUnit.IMPERIAL,
+                                    onCheckedChange = { isMiles ->
+                                        viewModel.setDistanceUnit(if (isMiles) DistanceUnit.IMPERIAL else DistanceUnit.METRIC)
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary
+                                    ),
+                                    modifier = Modifier.testTag("miles_switch")
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -398,7 +503,7 @@ fun SettingsScreen(
                                         Text(
                                             text = strings.sunScheduleSubtitle,
                                             fontSize = 12.sp,
-                                            fontWeight = FontWeight.Normal,
+                                            fontWeight = FontWeight.Medium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             lineHeight = 16.sp
                                         )
@@ -471,7 +576,7 @@ fun SettingsScreen(
                                 Text(
                                     text = strings.dynamicColorSubtitle,
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.Normal,
+                                    fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     lineHeight = 16.sp
                                 )
@@ -488,39 +593,128 @@ fun SettingsScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                    val systemInDark = isSystemInDarkTheme()
+                    val isOledAvailable = when (currentThemeMode) {
+                        AppThemeMode.DARK -> true
+                        AppThemeMode.SYSTEM -> if (autoSunTheme) !isDaytime else systemInDark
+                        AppThemeMode.LIGHT -> false
+                    }
 
-                    WavyDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                        waveLength = 36f,
-                        amplitude = 9f,
-                        thickness = 6f
-                    )
+                    // OLED Pure Pitch Black background toggle (available only when dark theme or system theme on dark is enabled)
+                    AnimatedVisibility(
+                        visible = isOledAvailable,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Column {
+                            Spacer(modifier = Modifier.height(18.dp))
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                            WavyDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                waveLength = 36f,
+                                amplitude = 9f,
+                                thickness = 6f
+                            )
 
-                    val isOledAvailable = currentThemeMode != AppThemeMode.LIGHT
+                            Spacer(modifier = Modifier.height(14.dp))
 
-                    // OLED Pure Pitch Black background toggle
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .then(
-                                if (isOledAvailable) {
-                                    Modifier.clickable { viewModel.setOledMode(!isOledMode) }
-                                } else {
-                                    Modifier
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.setOledMode(!isOledMode) },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(18.dp),
+                                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        modifier = Modifier.size(54.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                Icons.Default.DarkMode,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                        }
+                                    }
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        Text(
+                                            text = strings.oledMode,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            lineHeight = 18.sp
+                                        )
+                                        Text(
+                                            text = strings.oledSubtitle,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
                                 }
-                            ),
+
+                                Switch(
+                                    checked = isOledMode,
+                                    onCheckedChange = { viewModel.setOledMode(it) },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                }
+            }
+        }
+
+        item {
+            WavyDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                waveLength = 36f,
+                amplitude = 9f,
+                thickness = 6f
+            )
+        }
+
+        // ==========================================
+        // GEOFENCE WALKING AUTO-PARK (25m)
+        // ==========================================
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("geofence_autopark_settings_card"),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .alpha(if (isOledAvailable) 1f else 0.4f)
+                            modifier = Modifier.weight(1f)
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(18.dp),
@@ -528,46 +722,32 @@ fun SettingsScreen(
                                 modifier = Modifier.size(54.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        Icons.Default.DarkMode,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.size(28.dp)
+                                    GeofenceIcon(
+                                        modifier = Modifier.size(28.dp),
+                                        tint = MaterialTheme.colorScheme.primary
                                     )
                                 }
                             }
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = strings.oledMode,
-                                    fontSize = 14.sp,
+                                    text = strings.devGeofenceAutoParkTitle,
+                                    fontSize = 16.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    lineHeight = 18.sp
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = strings.oledSubtitle,
+                                    text = strings.devGeofenceAutoParkSubtitle,
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.Normal,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    lineHeight = 16.sp
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
-
                         Switch(
-                            checked = isOledMode && isOledAvailable,
-                            onCheckedChange = { if (isOledAvailable) viewModel.setOledMode(it) },
-                            enabled = isOledAvailable,
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                                checkedTrackColor = MaterialTheme.colorScheme.primary
-                            )
+                            checked = isGeofenceAutoPark,
+                            onCheckedChange = { viewModel.setGeofenceAutoParkEnabled(it) },
+                            modifier = Modifier.testTag("geofence_autopark_switch")
                         )
                     }
-
                 }
             }
         }
@@ -674,12 +854,13 @@ fun SettingsScreen(
                                 .fillMaxWidth()
                                 .padding(top = 16.dp)
                         ) {
-                            HorizontalDivider(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 16.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                            WavyDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                waveLength = 36f,
+                                amplitude = 9f,
+                                thickness = 6f
                             )
+                            Spacer(modifier = Modifier.height(16.dp))
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -722,7 +903,12 @@ fun SettingsScreen(
                             ) {
                                 ThemeOptionChip(
                                     title = strings.capyVariantBaby,
-                                    icon = Icons.Default.AutoAwesome,
+                                    iconContent = { tint ->
+                                        BabyBottleIcon(
+                                            tint = tint,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    },
                                     isSelected = currentCapyVariant == CapyVariant.BABY,
                                     onClick = { viewModel.setCapyVariant(CapyVariant.BABY) },
                                     modifier = Modifier.weight(1f)
@@ -840,7 +1026,7 @@ fun SettingsScreen(
                             Text(
                                 text = strings.ignoreBatteryOptimizationsDesc,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Normal,
+                                fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 lineHeight = 16.sp
                             )
@@ -876,17 +1062,25 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("alarm_sound_settings_card"),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp)
+                        .testTag("alarm_sound_settings_card")
+                        .clickable {
+                            val currentUri = AlarmSoundHelper.getAlarmUri(context)
+                            val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select Parking Timer Alarm")
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, currentUri)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                            }
+                            ringtonePickerLauncher.launch(intent)
+                        },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
@@ -921,127 +1115,103 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+
+                        IconButton(
+                            onClick = {
+                                val currentUri = AlarmSoundHelper.getAlarmUri(context)
+                                val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                                    putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                                    putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select Parking Timer Alarm")
+                                    putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, currentUri)
+                                    putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                                    putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                                }
+                                ringtonePickerLauncher.launch(intent)
+                            },
+                            modifier = Modifier
+                                .size(44.dp)
+                                .testTag("change_alarm_sound_gear_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
+                }
+            }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+            item {
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 14.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    thickness = 1.dp
+                )
+            }
 
-                    // Current sound row with Change button
-                    Row(
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("timer_notifications_reminders_card"),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                ) {
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                            .clickable {
-                                val currentUri = AlarmSoundHelper.getAlarmUri(context)
-                                val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
-                                    putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-                                    putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select Parking Timer Alarm")
-                                    putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, currentUri)
-                                    putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
-                                    putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier.size(54.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.NotificationsActive,
+                                        contentDescription = strings.earlyReminderAlerts,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(28.dp)
+                                    )
                                 }
-                                ringtonePickerLauncher.launch(intent)
                             }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Current Device Alarm Tone",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = alarmSoundTitle,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = strings.earlyReminderAlerts,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = strings.reminderMinutesBefore,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
 
-                        Button(
-                            onClick = {
-                                val currentUri = AlarmSoundHelper.getAlarmUri(context)
-                                val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
-                                    putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-                                    putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select Parking Timer Alarm")
-                                    putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, currentUri)
-                                    putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
-                                    putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                        // 3-pill timer notification reminder options matching reference screenshot
+                        TimerRemindersSelectorRow(
+                            reminders = timerReminders,
+                            onAdjust = { index, delta ->
+                                if (viewModel.adjustReminderMinutes(index, delta)) {
+                                    HapticHelper.performTimerDigitChangeHaptic(context)
                                 }
-                                ringtonePickerLauncher.launch(intent)
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Text("Change", fontSize = 12.sp)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Buttons: Test Sound & Device Sound Settings
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                if (isAlarmPreviewing) {
-                                    AlarmSoundHelper.stopAlarm(context)
-                                    isAlarmPreviewing = false
-                                } else {
-                                    isAlarmPreviewing = true
-                                    AlarmSoundHelper.previewAlarm(context) {
-                                        isAlarmPreviewing = false
-                                    }
-                                }
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.VolumeUp,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isAlarmPreviewing) "Stop" else strings.testAlarmSound,
-                                fontSize = 12.sp,
-                                maxLines = 1
-                            )
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                try {
-                                    val intent = Intent(Settings.ACTION_SOUND_SETTINGS)
-                                    context.startActivity(intent)
-                                } catch (_: Exception) {
-                                    Toast.makeText(context, "Cannot open sound settings", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = strings.openDeviceSoundSettings,
-                                fontSize = 12.sp,
-                                maxLines = 1
-                            )
-                        }
+                            }
+                        )
                     }
                 }
             }
@@ -1054,7 +1224,6 @@ fun SettingsScreen(
                 amplitude = 9f,
                 thickness = 6f
             )
-        }
         }
 
         // ==========================================
@@ -1304,7 +1473,8 @@ fun SettingsScreen(
 @Composable
 private fun ThemeOptionChip(
     title: String,
-    icon: ImageVector,
+    icon: ImageVector? = null,
+    iconContent: (@Composable (tint: Color) -> Unit)? = null,
     isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -1336,12 +1506,16 @@ private fun ThemeOptionChip(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = contentColor,
-                modifier = Modifier.size(24.dp)
-            )
+            if (iconContent != null) {
+                iconContent(contentColor)
+            } else if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = contentColor,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = title,

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -81,7 +82,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.entity.ParkingSpot
+import com.example.data.entity.isBluetoothEntry
+import com.example.data.entity.isGeofenceEntry
 import com.example.ui.components.EditSpotDialog
+import com.example.ui.components.GeofenceIcon
 import com.example.ui.components.ParkingMeterWidget
 import com.example.ui.components.ParkingTimerButton
 import androidx.compose.animation.core.animateDpAsState
@@ -119,12 +123,13 @@ fun HomeScreen(
     val isTimerRunning by viewModel.timerIsRunning.collectAsStateWithLifecycle()
     val timerRemainingSeconds by viewModel.timerRemainingSeconds.collectAsStateWithLifecycle()
     val isParkingTimerEnabled by viewModel.isParkingTimerFeatureEnabled.collectAsStateWithLifecycle()
+    val showTimerDialog by viewModel.showTimerDialog.collectAsStateWithLifecycle()
 
     var showNewParkDialog by remember { mutableStateOf(false) }
     var tapTimestamps by remember { mutableStateOf(emptyList<Long>()) }
 
     val backgroundBlur by animateDpAsState(
-        targetValue = if (showNewParkDialog) 20.dp else 0.dp,
+        targetValue = if (showNewParkDialog && !showTimerDialog) 20.dp else 0.dp,
         label = "home_blur"
     )
 
@@ -222,6 +227,7 @@ fun HomeScreen(
                 isTimerRunning = isTimerRunning,
                 timerRemainingSeconds = timerRemainingSeconds,
                 isParkingTimerEnabled = isParkingTimerEnabled,
+                viewModel = viewModel,
                 onOpenTimer = { viewModel.openParkingTimer() },
                 onManualPark = { showNewParkDialog = true },
                 onFoundCar = { viewModel.markCarFound() },
@@ -275,6 +281,13 @@ fun HomeScreen(
             initialSpot = null,
             currentLocation = currentLocation,
             currentAddress = currentAddress,
+            carBadgeStyle = carBadgeStyle,
+            capyVariant = capyVariant,
+            isTimerRunning = isTimerRunning,
+            timerRemainingSeconds = timerRemainingSeconds,
+            isTimerOpen = showTimerDialog,
+            viewModel = viewModel,
+            onOpenTimer = { viewModel.openParkingTimer() },
             onDismiss = { showNewParkDialog = false },
             onSave = { name, floor, note, customLat, customLng, customAddress ->
                 viewModel.saveCurrentLocationAsParking(name, floor, note, customLat, customLng, customAddress)
@@ -294,6 +307,7 @@ fun EmptyParkingStateCard(
     isTimerRunning: Boolean = false,
     timerRemainingSeconds: Long = 0L,
     isParkingTimerEnabled: Boolean = false,
+    viewModel: ParkingViewModel? = null,
     onOpenTimer: () -> Unit = {},
     onManualPark: () -> Unit,
     onFoundCar: () -> Unit,
@@ -326,15 +340,24 @@ fun EmptyParkingStateCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Text(
-                text = if (hasActiveSpot) (activeSpot?.spotName?.ifBlank { strings.myParkedCar } ?: strings.myParkedCar) else strings.noActiveParking,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = if (hasActiveSpot) (activeSpot?.spotName?.ifBlank { strings.myParkedCar } ?: strings.myParkedCar) else strings.noActiveParking,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
 
             Text(
-                text = if (hasActiveSpot) (if (activeSpot?.isAutoSaved == true) strings.autoSavedViaBt else strings.gpsLocationSaved) else strings.noActiveSpotSubtitle,
+                text = if (hasActiveSpot) {
+                    if (activeSpot?.isGeofenceEntry == true) strings.autoSavedViaGeofence
+                    else if (activeSpot?.isBluetoothEntry == true || activeSpot?.isAutoSaved == true) strings.autoSavedViaBt
+                    else strings.gpsLocationSaved
+                } else strings.noActiveSpotSubtitle,
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 6.dp)
@@ -390,59 +413,44 @@ fun EmptyParkingStateCard(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Blue Parking / Charging Timer Button when navigation has started
-            if (hasActiveSpot && isParkingTimerEnabled) {
-                ParkingTimerButton(
-                    isRunning = isTimerRunning,
-                    remainingSeconds = timerRemainingSeconds,
-                    onClick = onOpenTimer,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 10.dp)
-                )
-            }
-
-            // Action Button: Park Here Now / Found Car
+            // Active Spot Actions: Parking Timer and Found Car buttons side by side centered with same dimensions
             if (hasActiveSpot) {
-                Button(
-                    onClick = onFoundCar,
-                    shape = RoundedCornerShape(24.dp),
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .testTag("found_car_home_btn"),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    ),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
+                    if (isParkingTimerEnabled) {
+                        ParkingTimerButton(
+                            isRunning = isTimerRunning,
+                            remainingSeconds = timerRemainingSeconds,
+                            viewModel = viewModel,
+                            isFullWidth = false
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                    }
+
+                    com.example.ui.components.FoundCarTimerStyleButton(
                         text = strings.foundCar,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        maxLines = 1
+                        onClick = onFoundCar,
+                        isFullWidth = false,
+                        testTag = "found_car_home_btn"
                     )
                 }
             } else {
-                Button(
-                    onClick = onManualPark,
-                    shape = RoundedCornerShape(24.dp),
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .testTag("manual_park_now_btn"),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                        .padding(vertical = 4.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.AddLocationAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
+                    com.example.ui.components.ParkHereTimerStyleButton(
                         text = strings.parkHereNow,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        maxLines = 1
+                        onClick = onManualPark,
+                        isFullWidth = false,
+                        testTag = "manual_park_now_btn"
                     )
                 }
             }
@@ -494,18 +502,34 @@ fun RecentSpotItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Circular icon container (darker circular inset)
+                val isBt = spot.isBluetoothEntry
+                val isGeo = spot.isGeofenceEntry
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    color = if (isGeo || isBt) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.DirectionsCar,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        if (isGeo) {
+                            GeofenceIcon(
+                                modifier = Modifier.size(22.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        } else if (isBt) {
+                            Icon(
+                                imageVector = Icons.Default.Bluetooth,
+                                contentDescription = "Bluetooth Saved Spot",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.DirectionsCar,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
 
@@ -515,19 +539,24 @@ fun RecentSpotItem(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        text = displayAddress,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = displayAddress,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                    }
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = formattedTime,
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.Normal,
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis

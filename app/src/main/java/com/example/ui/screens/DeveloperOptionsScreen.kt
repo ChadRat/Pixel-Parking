@@ -15,26 +15,27 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BluetoothSearching
-import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.Pets
-import androidx.compose.material.icons.filled.PinDrop
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.ShareLocation
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.Vibration
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.viewmodel.ParkingViewModel
+import kotlin.math.roundToInt
 
 @Composable
 fun DeveloperOptionsScreen(
@@ -53,12 +55,9 @@ fun DeveloperOptionsScreen(
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
-    val isMockGps by viewModel.isDevMockGpsEnabled.collectAsStateWithLifecycle()
     val isBtProximity by viewModel.isBtProximityEnabled.collectAsStateWithLifecycle()
-    val isHapticDiag by viewModel.isDevHapticDiagnostics.collectAsStateWithLifecycle()
-    val isParkingTimerEnabled by viewModel.isParkingTimerFeatureEnabled.collectAsStateWithLifecycle()
-    val isGeofenceAutoPark by viewModel.isGeofenceAutoParkEnabled.collectAsStateWithLifecycle()
     val isCapyCarsEnabled by viewModel.isDevCapyCarsEnabled.collectAsStateWithLifecycle()
+    val textWeight by viewModel.devTextWeight.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier
@@ -89,8 +88,7 @@ fun DeveloperOptionsScreen(
 
             Text(
                 text = "Developer options",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Medium,
+                style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
         }
@@ -104,59 +102,23 @@ fun DeveloperOptionsScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(vertical = 4.dp)
         ) {
+            // Working Slider to control text weight dynamically across the app
             item {
-                DeveloperOptionSimpleRow(
-                    title = "Mock location",
-                    subtitle = "Simulate GPS sensor location",
-                    icon = Icons.Default.GpsFixed,
-                    checked = isMockGps,
-                    onCheckedChange = { viewModel.setDevMockGpsEnabled(it) },
-                    testTag = "toggle_dev_mock_gps"
+                DeveloperOptionTextWeightSlider(
+                    currentWeight = textWeight,
+                    onWeightChange = { viewModel.setDevTextWeight(it) },
+                    onReset = { viewModel.setDevTextWeight(400) }
                 )
             }
 
             item {
-                DeveloperOptionSimpleRow(
-                    title = strings.devGeofenceAutoParkTitle,
-                    subtitle = strings.devGeofenceAutoParkSubtitle,
-                    icon = Icons.Default.ShareLocation,
-                    checked = isGeofenceAutoPark,
-                    onCheckedChange = { viewModel.setGeofenceAutoParkEnabled(it) },
-                    testTag = "toggle_dev_geofence_autopark"
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                    thickness = 0.5.dp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
                 )
             }
 
-            if (isGeofenceAutoPark) {
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        FilledTonalButton(
-                            onClick = { viewModel.simulateGeofenceExit() },
-                            modifier = Modifier.testTag("btn_simulate_geofence_exit"),
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = strings.devSimulateGeofenceExit,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-            }
 
             item {
                 DeveloperOptionSimpleRow(
@@ -169,27 +131,6 @@ fun DeveloperOptionsScreen(
                 )
             }
 
-            item {
-                DeveloperOptionSimpleRow(
-                    title = "Haptic diagnostics",
-                    subtitle = "Vibration telemetry and logging",
-                    icon = Icons.Default.Vibration,
-                    checked = isHapticDiag,
-                    onCheckedChange = { viewModel.setDevHapticDiagnostics(it) },
-                    testTag = "toggle_dev_haptic_diag"
-                )
-            }
-
-            item {
-                DeveloperOptionSimpleRow(
-                    title = "Parking timer",
-                    subtitle = "Enable meter countdown tracker",
-                    icon = Icons.Default.Timer,
-                    checked = isParkingTimerEnabled,
-                    onCheckedChange = { viewModel.setParkingTimerFeatureEnabled(it) },
-                    testTag = "toggle_dev_parking_timer"
-                )
-            }
 
             item {
                 DeveloperOptionSimpleRow(
@@ -202,6 +143,132 @@ fun DeveloperOptionsScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * Interactive slider in Developer Options allowing fine-grained control
+ * of the text weight across the entire app.
+ */
+@Composable
+fun DeveloperOptionTextWeightSlider(
+    currentWeight: Int,
+    onWeightChange: (Int) -> Unit,
+    onReset: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var sliderPosition by remember(currentWeight) { mutableFloatStateOf(currentWeight.toFloat()) }
+    val displayWeight = sliderPosition.roundToInt().coerceIn(100, 900)
+    val weightLabel = remember(displayWeight) {
+        getFontWeightLabel(displayWeight)
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .testTag("dev_text_weight_container")
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FormatBold,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+
+                Column {
+                    Text(
+                        text = "System text weight",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = weightLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            if (currentWeight != 400) {
+                TextButton(
+                    onClick = onReset,
+                    modifier = Modifier.testTag("btn_reset_text_weight")
+                ) {
+                    Text(
+                        text = "Reset",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Working Slider
+        Slider(
+            value = sliderPosition,
+            onValueChange = {
+                sliderPosition = it
+                onWeightChange(it.roundToInt().coerceIn(100, 900))
+            },
+            valueRange = 100f..900f,
+            steps = 7, // 100, 200, 300, 400, 500, 600, 700, 800, 900
+            colors = SliderDefaults.colors(
+                thumbColor = MaterialTheme.colorScheme.primary,
+                activeTrackColor = MaterialTheme.colorScheme.primary,
+                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("slider_text_weight")
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Thin (100)",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "Default (400)",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (displayWeight in 350..450) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "Black (900)",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+private fun getFontWeightLabel(weight: Int): String {
+    return when {
+        weight <= 150 -> "Thin (100)"
+        weight <= 250 -> "Extra Light (200)"
+        weight <= 350 -> "Light (300)"
+        weight <= 450 -> "Regular (400) • System Default"
+        weight <= 550 -> "Medium (500)"
+        weight <= 650 -> "Semi-Bold (600)"
+        weight <= 750 -> "Bold (700)"
+        weight <= 850 -> "Extra Bold (800)"
+        else -> "Black (900)"
     }
 }
 
@@ -238,14 +305,13 @@ fun DeveloperOptionSimpleRow(
             Column {
                 Text(
                     text = title,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Normal,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

@@ -29,7 +29,7 @@ class PhoneWearableListenerService : WearableListenerService() {
                 val activeSpot = repository.getActiveSpotDirect()
                 val bridge = WearDataLayerBridge.getInstance(applicationContext)
                 bridge.syncParkingSpot(activeSpot)
-                val prefs = applicationContext.getSharedPreferences("app_settings", android.content.Context.MODE_PRIVATE)
+                val prefs = applicationContext.getSharedPreferences("pixel_parking_prefs", android.content.Context.MODE_PRIVATE)
                 val crownOnRight = prefs.getBoolean("wear_crown_on_right", true)
                 bridge.syncCrownPosition(crownOnRight)
             }
@@ -98,6 +98,24 @@ class PhoneWearableListenerService : WearableListenerService() {
                     repository.saveNewParkingSpot(newSpot)
                     val bridge = WearDataLayerBridge.getInstance(applicationContext)
                     bridge.syncParkingSpot(newSpot)
+                }
+            }
+        } else if (messageEvent.path == "/restore_latest_spot" || messageEvent.path == WearDataLayerBridge.PATH_RESTORE_LATEST_SPOT) {
+            Log.d("PhoneWearableService", "Received restore latest spot request from Wear OS node: ${messageEvent.sourceNodeId}")
+            val db = AppDatabase.getDatabase(applicationContext)
+            val repository = (applicationContext as? AutoParkApplication)?.repository
+                ?: ParkingRepository(db.parkingSpotDao(), db.bluetoothCarDeviceDao())
+
+            scope.launch {
+                val mostRecentSpot = repository.getMostRecentSpotDirect()
+                if (mostRecentSpot != null) {
+                    repository.setActiveSpot(mostRecentSpot.id)
+                    val activeSpot = repository.getActiveSpotDirect()
+                    val bridge = WearDataLayerBridge.getInstance(applicationContext)
+                    bridge.syncParkingSpot(activeSpot)
+                    Log.d("PhoneWearableService", "Restored latest parking spot #${mostRecentSpot.id} for Wear OS")
+                } else {
+                    Log.d("PhoneWearableService", "No previous parking spot found in history to restore")
                 }
             }
         }

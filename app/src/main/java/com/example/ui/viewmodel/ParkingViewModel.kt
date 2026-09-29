@@ -1,8 +1,10 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.location.Location
 import android.net.Uri
 import android.provider.Settings
@@ -20,6 +22,7 @@ import com.example.sensor.BtSignalTier
 import com.example.sensor.CompassSensorManager
 import com.example.sensor.CompassState
 import com.example.sensor.DeviceHardwareProfile
+import com.example.sensor.DistanceUnit
 import com.example.sensor.HapticPatternEvent
 import com.example.sensor.HardwareSensorProfiler
 import com.example.sensor.LocationHelper
@@ -131,6 +134,15 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     val currentStrings: AppStrings
         get() = getAppStrings(_appLanguage.value)
 
+    private val _distanceUnit = MutableStateFlow(
+        try {
+            DistanceUnit.valueOf(prefs.getString("distance_unit", DistanceUnit.METRIC.name) ?: DistanceUnit.METRIC.name)
+        } catch (_: Exception) {
+            DistanceUnit.METRIC
+        }
+    )
+    val distanceUnit: StateFlow<DistanceUnit> = _distanceUnit.asStateFlow()
+
     private val _wearCrownOnRight = MutableStateFlow(prefs.getBoolean("wear_crown_on_right", true))
     val wearCrownOnRight: StateFlow<Boolean> = _wearCrownOnRight.asStateFlow()
 
@@ -197,16 +209,21 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     private val _isDevHapticDiagnostics = MutableStateFlow(prefs.getBoolean("dev_haptic_diag", false))
     val isDevHapticDiagnostics: StateFlow<Boolean> = _isDevHapticDiagnostics.asStateFlow()
 
-    private val _isParkingTimerFeatureEnabled = MutableStateFlow(prefs.getBoolean("parking_timer_feature_enabled", false))
+    private val _isParkingTimerFeatureEnabled = MutableStateFlow(prefs.getBoolean("parking_timer_feature_enabled", true))
     val isParkingTimerFeatureEnabled: StateFlow<Boolean> = _isParkingTimerFeatureEnabled.asStateFlow()
 
-    // Geofencing Auto-Park Feature (Default disabled, toggleable in Dev Settings)
-    private val _isGeofenceAutoParkEnabled = MutableStateFlow(prefs.getBoolean("geofence_auto_park_enabled", false))
+    // Geofencing Auto-Park Feature (Default enabled, 25m perimeter)
+    private val autoParkPrefs = application.getSharedPreferences(com.example.geofence.GeofenceManager.PREFS_NAME, Context.MODE_PRIVATE)
+    private val _isGeofenceAutoParkEnabled = MutableStateFlow(autoParkPrefs.getBoolean(com.example.geofence.GeofenceManager.KEY_GEOFENCE_ENABLED, true))
     val isGeofenceAutoParkEnabled: StateFlow<Boolean> = _isGeofenceAutoParkEnabled.asStateFlow()
 
     // Capy Cars Option in Developer Options (Default disabled)
     private val _isDevCapyCarsEnabled = MutableStateFlow(prefs.getBoolean("dev_capy_cars_enabled", false))
     val isDevCapyCarsEnabled: StateFlow<Boolean> = _isDevCapyCarsEnabled.asStateFlow()
+
+    // Text Weight Option in Developer Options (Default 400 - System Default)
+    private val _devTextWeight = MutableStateFlow(prefs.getInt("dev_text_weight", 400))
+    val devTextWeight: StateFlow<Int> = _devTextWeight.asStateFlow()
 
     // Active Bluetooth Proximity Tracking
     val btProximityState: StateFlow<BtProximityState> = bluetoothProximityManager.proximityState
@@ -223,16 +240,42 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         .map { it.distanceMeters }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 15.0f)
 
+    // History Tab Pinned Spots
+    private val _pinnedSpotIds = MutableStateFlow<Set<Long>>(
+        try {
+            prefs.getStringSet("pinned_spot_ids", emptySet())
+                ?.mapNotNull { it.toLongOrNull() }
+                ?.toSet() ?: emptySet()
+        } catch (_: Exception) {
+            emptySet()
+        }
+    )
+    val pinnedSpotIds: StateFlow<Set<Long>> = _pinnedSpotIds.asStateFlow()
+
+    fun togglePinSpot(spotId: Long) {
+        val current = _pinnedSpotIds.value
+        val updated = if (current.contains(spotId)) {
+            current - spotId
+        } else {
+            current + spotId
+        }
+        _pinnedSpotIds.value = updated
+        prefs.edit().putStringSet("pinned_spot_ids", updated.map { it.toString() }.toSet()).apply()
+    }
+
     // --- Parking & Charging Timer Feature ---
     private val _timerTotalSeconds = MutableStateFlow(
-        prefs.getLong("parking_timer_total_seconds", 30 * 60L).coerceIn(60L, 24 * 3600L)
+        prefs.getLong("parking_timer_total_seconds", 0L).coerceIn(0L, 24 * 3600L)
     )
     val timerTotalSeconds: StateFlow<Long> = _timerTotalSeconds.asStateFlow()
 
     private val _timerRemainingSeconds = MutableStateFlow(
-        prefs.getLong("parking_timer_total_seconds", 30 * 60L).coerceIn(60L, 24 * 3600L)
+        prefs.getLong("parking_timer_remaining_seconds", 0L).coerceIn(0L, 24 * 3600L)
     )
     val timerRemainingSeconds: StateFlow<Long> = _timerRemainingSeconds.asStateFlow()
+
+    private val _timerEndTimestamp = MutableStateFlow<Long?>(null)
+    val timerEndTimestamp: StateFlow<Long?> = _timerEndTimestamp.asStateFlow()
 
     private val _timerIsRunning = MutableStateFlow(false)
     val timerIsRunning: StateFlow<Boolean> = _timerIsRunning.asStateFlow()
@@ -240,15 +283,18 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     private val _timerIsPaused = MutableStateFlow(false)
     val timerIsPaused: StateFlow<Boolean> = _timerIsPaused.asStateFlow()
 
-    // Up to 3 reminder alerts before end of timer (e.g. 15, 10, 5 mins)
+    private val _timerIsStopped = MutableStateFlow(false)
+    val timerIsStopped: StateFlow<Boolean> = _timerIsStopped.asStateFlow()
+
+    // Up to 3 reminder alerts before end of timer (e.g. 60, 30, 15 mins)
     private val _timerRemindersMinutes = MutableStateFlow(
-        prefs.getString("parking_timer_reminders", "15,10,5")
+        prefs.getString("parking_timer_reminders", "60,30,15")
             ?.split(",")
             ?.mapNotNull { it.trim().toIntOrNull() }
             ?.filter { it > 0 }
             ?.take(3)
-            ?.ifEmpty { listOf(15, 10, 5) }
-            ?: listOf(15, 10, 5)
+            ?.ifEmpty { listOf(60, 30, 15) }
+            ?: listOf(60, 30, 15)
     )
     val timerRemindersMinutes: StateFlow<List<Int>> = _timerRemindersMinutes.asStateFlow()
 
@@ -274,8 +320,10 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     val navigationTelemetry = combine(
         activeSpot,
         currentLocation,
-        compassState
-    ) { spot, loc, compass ->
+        compassState,
+        _distanceUnit,
+        _appLanguage
+    ) { spot, loc, compass, unit, lang ->
         if (spot == null || loc == null || !spot.isActive) {
             compassSensorManager.setTargetBearing(null)
             NavigationTelemetry(
@@ -318,9 +366,10 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
                 )
             }
 
+            val effectiveUnit = if (lang == AppLanguage.ENGLISH) unit else DistanceUnit.METRIC
             NavigationTelemetry(
                 distanceMeters = dist,
-                formattedDistance = LocationHelper.formatDistance(dist),
+                formattedDistance = LocationHelper.formatDistanceWithUnit(dist, effectiveUnit),
                 targetBearing = bearing,
                 relativeArrowAngle = relativeAngle,
                 altitudeDifference = altDiff,
@@ -335,12 +384,38 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
 
     private val wearDataLayerBridge = WearDataLayerBridge.getInstance(application)
 
+    private val timerActionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == com.example.receiver.ParkingTimerActionReceiver.ACTION_RESUME_TIMER) {
+                com.example.notification.ParkingNotificationHelper.dismissTimerStoppedNotification(getApplication())
+                if (_timerRemainingSeconds.value > 0) {
+                    startParkingTimer()
+                }
+            }
+        }
+    }
+
     init {
         compassSensorManager.hapticProfile = _hapticProfile.value
         startLocationTracking()
         refreshCurrentLocation()
         syncSystemPairedDevices()
         updateDaytimeState()
+
+        // Clean initial state: when no timer is active or stopped, ensure strictly 00:00
+        if (!_timerIsRunning.value && !_timerIsStopped.value && !_timerIsPaused.value) {
+            _timerRemainingSeconds.value = 0L
+            _timerTotalSeconds.value = 0L
+            prefs.edit().putLong("parking_timer_total_seconds", 0L)
+                .putLong("parking_timer_remaining_seconds", 0L).apply()
+        }
+
+        val filter = IntentFilter(com.example.receiver.ParkingTimerActionReceiver.ACTION_RESUME_TIMER)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            application.registerReceiver(timerActionReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            application.registerReceiver(timerActionReceiver, filter)
+        }
 
         viewModelScope.launch {
             activeSpot.collect { spot ->
@@ -364,6 +439,7 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
 
     fun triggerWearSync() {
         wearDataLayerBridge.syncParkingSpot(activeSpot.value)
+        wearDataLayerBridge.syncCrownPosition(_wearCrownOnRight.value)
     }
 
     fun startLocationTracking() {
@@ -371,6 +447,16 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         locationCallback = LocationHelper.startContinuousLocationUpdates(getApplication(), 4000L) { loc ->
             _currentLocation.value = loc
             updateDaytimeState()
+            if (_isGeofenceAutoParkEnabled.value) {
+                com.example.geofence.GeofenceManager.recordCarLocation(
+                    context = getApplication(),
+                    latitude = loc.latitude,
+                    longitude = loc.longitude,
+                    altitude = loc.altitude,
+                    accuracy = loc.accuracy,
+                    speedMps = if (loc.hasSpeed()) loc.speed else 0f
+                )
+            }
             viewModelScope.launch(Dispatchers.IO) {
                 val addr = LocationHelper.getAddressFromCoordinates(getApplication(), loc.latitude, loc.longitude)
                 _currentAddress.value = addr
@@ -441,6 +527,11 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         _appLanguage.value = language
         prefs.edit().putString("app_language", language.name).apply()
         ParkingNotificationHelper.createNotificationChannels(getApplication())
+    }
+
+    fun setDistanceUnit(unit: DistanceUnit) {
+        _distanceUnit.value = unit
+        prefs.edit().putString("distance_unit", unit.name).apply()
     }
 
     fun setHapticProfile(profile: HapticProfile) {
@@ -723,12 +814,19 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     fun deleteSpot(id: Long) {
         viewModelScope.launch {
             repository.deleteSpot(id)
+            if (_pinnedSpotIds.value.contains(id)) {
+                val updated = _pinnedSpotIds.value - id
+                _pinnedSpotIds.value = updated
+                prefs.edit().putStringSet("pinned_spot_ids", updated.map { it.toString() }.toSet()).apply()
+            }
         }
     }
 
     fun clearHistory() {
         viewModelScope.launch {
             repository.clearHistory()
+            _pinnedSpotIds.value = emptySet()
+            prefs.edit().remove("pinned_spot_ids").apply()
         }
     }
 
@@ -1029,10 +1127,18 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun setDevTextWeight(weight: Int) {
+        val clamped = weight.coerceIn(100, 900)
+        _devTextWeight.value = clamped
+        prefs.edit().putInt("dev_text_weight", clamped).apply()
+    }
+
     fun setGeofenceAutoParkEnabled(enabled: Boolean) {
         _isGeofenceAutoParkEnabled.value = enabled
         prefs.edit().putBoolean("geofence_auto_park_enabled", enabled).apply()
+        autoParkPrefs.edit().putBoolean(com.example.geofence.GeofenceManager.KEY_GEOFENCE_ENABLED, enabled).apply()
         if (enabled) {
+            com.example.geofence.GeofenceManager.startGeofenceWalkingAutoPark(getApplication())
             val loc = _currentLocation.value ?: activeSpot.value?.let {
                 Location("car_spot").apply {
                     latitude = it.latitude
@@ -1043,11 +1149,12 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
                 com.example.geofence.GeofenceManager.registerCarPerimeterGeofence(
                     getApplication(),
                     loc.latitude,
-                    loc.longitude
+                    loc.longitude,
+                    com.example.geofence.GeofenceManager.DEFAULT_PERIMETER_RADIUS_METERS
                 )
             }
         } else {
-            com.example.geofence.GeofenceManager.removeGeofences(getApplication())
+            com.example.geofence.GeofenceManager.stopGeofenceWalkingAutoPark(getApplication())
         }
     }
 
@@ -1058,11 +1165,9 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
                 longitude = it.longitude
             }
         }
-        val lat = loc?.latitude ?: 0.0
-        val lng = loc?.longitude ?: 0.0
-        if (lat != 0.0 && lng != 0.0) {
-            com.example.geofence.GeofenceManager.simulateGeofenceExit(getApplication(), lat, lng)
-        }
+        val lat = if (loc != null && loc.latitude != 0.0) loc.latitude else 37.4220
+        val lng = if (loc != null && loc.longitude != 0.0) loc.longitude else -122.0841
+        com.example.geofence.GeofenceManager.simulateGeofenceExit(getApplication(), lat, lng)
     }
 
     fun startBtProximityFinder(device: BluetoothCarDevice): Boolean {
@@ -1095,14 +1200,27 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         _showTimerDialog.value = false
     }
 
-    fun startParkingTimer() {
-        if (_timerRemainingSeconds.value <= 0) {
+    fun startParkingTimer(): Boolean {
+        if (_timerRemainingSeconds.value <= 0L && _timerTotalSeconds.value <= 0L) {
+            resetTimerToZero()
+            return false
+        }
+        if (_timerRemainingSeconds.value <= 0L) {
             _timerRemainingSeconds.value = _timerTotalSeconds.value
+        }
+        if (_timerRemainingSeconds.value <= 0L) {
+            resetTimerToZero()
+            return false
         }
         _timerIsRunning.value = true
         _timerIsPaused.value = false
+        _timerIsStopped.value = false
         _isAlarmActive.value = false
+        _timerEndTimestamp.value = System.currentTimeMillis() + (_timerRemainingSeconds.value * 1000L)
         com.example.util.AlarmSoundHelper.stopAlarm(getApplication())
+        com.example.notification.ParkingNotificationHelper.dismissTimerExpiredNotification(getApplication())
+        com.example.notification.ParkingNotificationHelper.dismissTimerStoppedNotification(getApplication())
+        com.example.notification.ParkingNotificationHelper.showOngoingTimerNotification(getApplication(), _timerRemainingSeconds.value)
 
         // Sync with active spot if present
         activeSpot.value?.let { spot ->
@@ -1112,6 +1230,10 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
+        // Initialize already triggered alerts so we never fire reminders for intervals greater than the timer duration
+        val initialRemainingMinutes = (_timerRemainingSeconds.value / 60).toInt()
+        _timerAlertsTriggered.value = _timerRemindersMinutes.value.filter { it >= initialRemainingMinutes }.toSet()
+
         timerJob?.cancel()
         timerJob = viewModelScope.launch {
             while (_timerIsRunning.value && _timerRemainingSeconds.value > 0) {
@@ -1119,13 +1241,19 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
                 val remaining = _timerRemainingSeconds.value - 1
                 _timerRemainingSeconds.value = remaining
 
-                // Check early notification reminders (up to 3 times before end)
+                // Update ongoing non-dismissible notification every 5 seconds or when under 60 seconds
+                if (remaining % 5 == 0L || remaining <= 60L) {
+                    com.example.notification.ParkingNotificationHelper.showOngoingTimerNotification(getApplication(), remaining)
+                }
+
+                // Check early notification reminders at exact minute mark
                 val remainingMinutes = (remaining / 60).toInt()
+                val secondsInMinute = (remaining % 60).toInt()
                 val triggered = _timerAlertsTriggered.value
                 val reminders = _timerRemindersMinutes.value
 
                 for (alertMin in reminders) {
-                    if (remainingMinutes <= alertMin && remainingMinutes > 0 && !triggered.contains(alertMin)) {
+                    if (alertMin > 0 && remainingMinutes == alertMin && secondsInMinute == 0 && !triggered.contains(alertMin)) {
                         _timerAlertsTriggered.value = triggered + alertMin
                         com.example.notification.ParkingNotificationHelper.showSystemNotification(
                             getApplication(),
@@ -1146,47 +1274,89 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
                 if (remaining <= 0) {
                     _timerIsRunning.value = false
                     _timerIsPaused.value = false
+                    _timerIsStopped.value = false
                     _isAlarmActive.value = true
-                    _timerRemainingSeconds.value = 0
+                    _timerRemainingSeconds.value = 0L
+                    _timerTotalSeconds.value = 0L
+                    _timerEndTimestamp.value = null
+                    prefs.edit().putLong("parking_timer_total_seconds", 0L)
+                        .putLong("parking_timer_remaining_seconds", 0L).apply()
 
+                    com.example.notification.ParkingNotificationHelper.dismissOngoingTimerNotification(getApplication())
                     com.example.util.AlarmSoundHelper.playAlarm(getApplication())
-                    com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                    com.example.notification.ParkingNotificationHelper.showTimerExpiredNotification(
                         getApplication(),
-                        currentStrings.notificationTimerExpiredTitle,
-                        currentStrings.notificationTimerExpiredBody
+                        currentStrings.alarmExpiredTitle,
+                        currentStrings.alarmExpiredMessage
                     )
                     break
                 }
             }
         }
+        return true
     }
 
     fun pauseParkingTimer() {
         _timerIsRunning.value = false
         _timerIsPaused.value = true
+        _timerEndTimestamp.value = null
         timerJob?.cancel()
+        com.example.notification.ParkingNotificationHelper.dismissOngoingTimerNotification(getApplication())
+    }
+
+    fun stopParkingTimerWithNotification() {
+        val hadRunning = _timerIsRunning.value || _timerRemainingSeconds.value > 0
+        _timerIsRunning.value = false
+        _timerIsPaused.value = false
+        _timerIsStopped.value = true
+        _timerEndTimestamp.value = null
+        _isAlarmActive.value = false
+        timerJob?.cancel()
+        com.example.util.AlarmSoundHelper.stopAlarm(getApplication())
+        com.example.notification.ParkingNotificationHelper.dismissOngoingTimerNotification(getApplication())
+        com.example.notification.ParkingNotificationHelper.dismissTimerExpiredNotification(getApplication())
+        if (hadRunning) {
+            com.example.notification.ParkingNotificationHelper.showTimerStoppedNotification(getApplication())
+        }
     }
 
     fun resetParkingTimer() {
         _timerIsRunning.value = false
         _timerIsPaused.value = false
+        _timerIsStopped.value = false
+        _timerEndTimestamp.value = null
         timerJob?.cancel()
-        _timerRemainingSeconds.value = _timerTotalSeconds.value
+        _timerRemainingSeconds.value = 0L
+        _timerTotalSeconds.value = 0L
+        prefs.edit().putLong("parking_timer_total_seconds", 0L)
+            .putLong("parking_timer_remaining_seconds", 0L).apply()
         _timerAlertsTriggered.value = emptySet()
         _isAlarmActive.value = false
+        com.example.notification.ParkingNotificationHelper.dismissOngoingTimerNotification(getApplication())
         com.example.util.AlarmSoundHelper.stopAlarm(getApplication())
+        com.example.notification.ParkingNotificationHelper.dismissTimerExpiredNotification(getApplication())
     }
 
     fun resetTimerToZero() {
         _timerIsRunning.value = false
         _timerIsPaused.value = false
+        _timerIsStopped.value = false
+        _timerEndTimestamp.value = null
         timerJob?.cancel()
         _timerTotalSeconds.value = 0L
         _timerRemainingSeconds.value = 0L
         prefs.edit().putLong("parking_timer_total_seconds", 0L).apply()
         _timerAlertsTriggered.value = emptySet()
         _isAlarmActive.value = false
+        com.example.notification.ParkingNotificationHelper.dismissOngoingTimerNotification(getApplication())
+        com.example.notification.ParkingNotificationHelper.dismissTimerStoppedNotification(getApplication())
         com.example.util.AlarmSoundHelper.stopAlarm(getApplication())
+        com.example.notification.ParkingNotificationHelper.dismissTimerExpiredNotification(getApplication())
+        activeSpot.value?.let { spot ->
+            viewModelScope.launch {
+                repository.updateParkingSpot(spot.copy(meterExpiryTimestamp = null))
+            }
+        }
     }
 
     fun toggleTimerPlayPause() {
@@ -1199,12 +1369,65 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun adjustTimerHours(deltaHours: Int) {
+        _timerIsStopped.value = false
+        val currentSeconds = if (_timerIsRunning.value) _timerRemainingSeconds.value else _timerTotalSeconds.value
+        val curHours = (currentSeconds / 3600).toInt()
+        val curMins = ((currentSeconds % 3600) / 60).toInt()
+        val newHours = (curHours + deltaHours).coerceIn(0, 99)
+        val newTotal = (newHours * 3600L) + (curMins * 60L)
+        _timerTotalSeconds.value = newTotal
+        prefs.edit().putLong("parking_timer_total_seconds", newTotal).apply()
+        _timerRemainingSeconds.value = newTotal
+        _isAlarmActive.value = false
+        com.example.util.AlarmSoundHelper.stopAlarm(getApplication())
+        com.example.notification.ParkingNotificationHelper.dismissTimerExpiredNotification(getApplication())
+
+        if (newTotal == 0L) {
+            _timerIsRunning.value = false
+            timerJob?.cancel()
+            _timerEndTimestamp.value = null
+            com.example.notification.ParkingNotificationHelper.dismissOngoingTimerNotification(getApplication())
+        } else if (_timerIsRunning.value) {
+            _timerEndTimestamp.value = System.currentTimeMillis() + (newTotal * 1000L)
+            com.example.notification.ParkingNotificationHelper.showOngoingTimerNotification(getApplication(), newTotal)
+        }
+    }
+
+    fun adjustTimerMinutes(deltaMinutes: Int) {
+        _timerIsStopped.value = false
+        val currentSeconds = if (_timerIsRunning.value) _timerRemainingSeconds.value else _timerTotalSeconds.value
+        val curHours = (currentSeconds / 3600).toInt()
+        val curMins = ((currentSeconds % 3600) / 60).toInt()
+        val newMins = (curMins + deltaMinutes).coerceIn(0, 59)
+        val newTotal = (curHours * 3600L) + (newMins * 60L)
+        _timerTotalSeconds.value = newTotal
+        prefs.edit().putLong("parking_timer_total_seconds", newTotal).apply()
+        _timerRemainingSeconds.value = newTotal
+        _isAlarmActive.value = false
+        com.example.util.AlarmSoundHelper.stopAlarm(getApplication())
+        com.example.notification.ParkingNotificationHelper.dismissTimerExpiredNotification(getApplication())
+
+        if (newTotal == 0L) {
+            _timerIsRunning.value = false
+            timerJob?.cancel()
+            _timerEndTimestamp.value = null
+            com.example.notification.ParkingNotificationHelper.dismissOngoingTimerNotification(getApplication())
+        } else if (_timerIsRunning.value) {
+            _timerEndTimestamp.value = System.currentTimeMillis() + (newTotal * 1000L)
+            com.example.notification.ParkingNotificationHelper.showOngoingTimerNotification(getApplication(), newTotal)
+        }
+    }
+
     fun addTimerMinutes(minutes: Int) {
-        val newTotal = (_timerTotalSeconds.value + (minutes * 60L)).coerceIn(60L, 24 * 3600L)
+        val newTotal = (_timerTotalSeconds.value + (minutes * 60L)).coerceIn(0L, 24 * 3600L)
         _timerTotalSeconds.value = newTotal
         prefs.edit().putLong("parking_timer_total_seconds", newTotal).apply()
         val newRemaining = (_timerRemainingSeconds.value + (minutes * 60L)).coerceIn(0L, 24 * 3600L)
         _timerRemainingSeconds.value = newRemaining
+        if (_timerIsRunning.value) {
+            _timerEndTimestamp.value = System.currentTimeMillis() + (newRemaining * 1000L)
+        }
     }
 
     fun setTimerDuration(seconds: Long) {
@@ -1214,6 +1437,9 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         if (!_timerIsRunning.value) {
             _timerRemainingSeconds.value = clamped
             _timerAlertsTriggered.value = emptySet()
+        } else {
+            _timerRemainingSeconds.value = clamped
+            _timerEndTimestamp.value = System.currentTimeMillis() + (clamped * 1000L)
         }
     }
 
@@ -1221,13 +1447,15 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         if (isClockwise) {
             // Clockwise: add minutes (+1 min)
             val current = _timerTotalSeconds.value
-            val newTotal = (current + 60L).coerceIn(60L, 24 * 3600L)
+            val newTotal = (current + 60L).coerceIn(0L, 24 * 3600L)
             _timerTotalSeconds.value = newTotal
             prefs.edit().putLong("parking_timer_total_seconds", newTotal).apply()
             if (!_timerIsRunning.value) {
                 _timerRemainingSeconds.value = newTotal
             } else {
-                _timerRemainingSeconds.value = (_timerRemainingSeconds.value + 60L).coerceIn(1L, 24 * 3600L)
+                val newRem = (_timerRemainingSeconds.value + 60L).coerceIn(0L, 24 * 3600L)
+                _timerRemainingSeconds.value = newRem
+                _timerEndTimestamp.value = System.currentTimeMillis() + (newRem * 1000L)
             }
         } else {
             // Counter-clockwise: subtract minutes (-1 min) down to 0
@@ -1238,27 +1466,33 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             if (!_timerIsRunning.value) {
                 _timerRemainingSeconds.value = newTotal
             } else {
-                _timerRemainingSeconds.value = (_timerRemainingSeconds.value - 60L).coerceAtLeast(0L)
+                val newRem = (_timerRemainingSeconds.value - 60L).coerceAtLeast(0L)
+                _timerRemainingSeconds.value = newRem
+                _timerEndTimestamp.value = System.currentTimeMillis() + (newRem * 1000L)
             }
         }
     }
 
-    fun adjustReminderMinutes(index: Int, isAdd: Boolean) {
+    fun adjustReminderMinutes(index: Int, delta: Int): Boolean {
         val currentList = _timerRemindersMinutes.value.toMutableList()
         while (currentList.size < 3) {
-            currentList.add(when (currentList.size) { 0 -> 15; 1 -> 10; else -> 5 })
+            currentList.add(when (currentList.size) { 0 -> 60; 1 -> 30; else -> 15 })
         }
         if (index in 0 until currentList.size) {
             val currentVal = currentList[index]
-            val newVal = if (isAdd) {
-                (currentVal + 1).coerceIn(1, 180)
-            } else {
-                (currentVal - 1).coerceAtLeast(0)
+            val newVal = (currentVal + delta).coerceIn(0, 180)
+            if (newVal != currentVal) {
+                currentList[index] = newVal
+                _timerRemindersMinutes.value = currentList
+                prefs.edit().putString("parking_timer_reminders", currentList.joinToString(",")).apply()
+                return true
             }
-            currentList[index] = newVal
-            _timerRemindersMinutes.value = currentList
-            prefs.edit().putString("parking_timer_reminders", currentList.joinToString(",")).apply()
         }
+        return false
+    }
+
+    fun adjustReminderMinutes(index: Int, isAdd: Boolean) {
+        adjustReminderMinutes(index, if (isAdd) 1 else -1)
     }
 
     fun setTimerReminders(reminders: List<Int>) {
@@ -1269,7 +1503,12 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
 
     fun dismissTimerAlarm() {
         _isAlarmActive.value = false
+        _timerRemainingSeconds.value = 0L
+        _timerTotalSeconds.value = 0L
+        prefs.edit().putLong("parking_timer_total_seconds", 0L)
+            .putLong("parking_timer_remaining_seconds", 0L).apply()
         com.example.util.AlarmSoundHelper.stopAlarm(getApplication())
+        com.example.notification.ParkingNotificationHelper.dismissTimerExpiredNotification(getApplication())
     }
 
     fun snoozeTimerAlarm(minutes: Int = 5) {

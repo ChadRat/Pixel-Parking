@@ -26,6 +26,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -259,23 +260,26 @@ fun PixelAnimatedCarBadge(
             }
         }
 
-        // Center Car Icon OR Cute Capybara (Baby vs Adult)
+        // Center Car Icon OR Cute Capybara (Baby vs Adult vs Cheeky)
         if (style == CarBadgeStyle.CAPY) {
             Canvas(
                 modifier = Modifier.size(size * 0.38f)
             ) {
-                if (capyVariant == CapyVariant.BABY) {
-                    drawBabyCapybaraFace(
-                        center = Offset(size.toPx() * 0.19f, size.toPx() * 0.19f),
-                        size = size.toPx() * 0.38f,
-                        tintColor = iconColor
-                    )
-                } else {
-                    drawAdultCapybaraFace(
-                        center = Offset(size.toPx() * 0.19f, size.toPx() * 0.19f),
-                        size = size.toPx() * 0.38f,
-                        tintColor = iconColor
-                    )
+                when (capyVariant) {
+                    CapyVariant.BABY -> {
+                        drawBabyCapybaraFace(
+                            center = Offset(size.toPx() * 0.19f, size.toPx() * 0.19f),
+                            size = size.toPx() * 0.38f,
+                            tintColor = iconColor
+                        )
+                    }
+                    CapyVariant.ADULT -> {
+                        drawAdultCapybaraFace(
+                            center = Offset(size.toPx() * 0.19f, size.toPx() * 0.19f),
+                            size = size.toPx() * 0.38f,
+                            tintColor = iconColor
+                        )
+                    }
                 }
             }
         } else {
@@ -583,6 +587,400 @@ private fun DrawScope.drawBabyCapybaraFace(
         topLeft = Offset(cx + w * 0.18f, babyBlushY - h * 0.045f),
         size = Size(w * 0.14f, h * 0.09f)
     )
+}
+
+/**
+ * Draws an ultra-cute, cheeky Capybara with playful wink and cheeky blep tongue:
+ * - Chubby mochi-like rounded head and body with warm caramel fill and bold cartoon outline
+ * - Quirky perked ears with pink inner fluff (one ear slightly cocked playfully)
+ * - Winking left eye with curled eyelashes, large open sparkling anime right eye with double catchlights
+ * - Cute arched mischievous eyebrows
+ * - Rounded soft snout with dark button nostrils
+ * - Playful split cat smile with cute pink tongue sticking out sideways ("blep")
+ * - Big glowing rosy chubby cheeks with highlight gleams
+ * - Playful golden sparkle twinkle accent near the winking eye
+ * - Playful paw gesture (one paw tapping cheek, other resting on tummy)
+ * - Adorable little double-leaf green sprout on head
+ */
+private fun DrawScope.drawCheekyCapybaraFace(
+    center: Offset,
+    size: Float,
+    tintColor: Color
+) {
+    val cx = center.x
+    val cy = center.y + size * 0.03f
+    val w = size
+    val h = size
+
+    val outlineColor = Color(0xFF221612)
+    val bodyFillColor = Color(0xFFE8BA8E)
+    val snoutColor = Color(0xFFA67756)
+    val earDarkColor = Color(0xFF8D5B3E)
+    val earPinkColor = Color(0xFFFFAEC9)
+    val blushColor = Color(0xFFFF6B81).copy(alpha = 0.70f)
+    val tongueColor = Color(0xFFFF627C)
+    val tongueOutline = Color(0xFFB71C1C)
+    val mainStrokeWidth = w * 0.054f
+    val detailStrokeWidth = w * 0.038f
+
+    // 0. KAWAII SPROUT ON HEAD
+    val sproutBase = Offset(cx + w * 0.01f, cy - h * 0.34f)
+    val stemPath = Path().apply {
+        moveTo(sproutBase.x, sproutBase.y)
+        quadraticTo(sproutBase.x - w * 0.02f, sproutBase.y - h * 0.05f, sproutBase.x, sproutBase.y - h * 0.09f)
+    }
+    drawPath(stemPath, color = outlineColor, style = Stroke(width = detailStrokeWidth * 1.1f, cap = StrokeCap.Round))
+    drawPath(stemPath, color = Color(0xFF4CAF50), style = Stroke(width = detailStrokeWidth * 0.7f, cap = StrokeCap.Round))
+
+    // Sprout Left Leaf
+    val leftLeafPath = Path().apply {
+        moveTo(sproutBase.x, sproutBase.y - h * 0.085f)
+        cubicTo(
+            sproutBase.x - w * 0.07f, sproutBase.y - h * 0.12f,
+            sproutBase.x - w * 0.08f, sproutBase.y - h * 0.06f,
+            sproutBase.x, sproutBase.y - h * 0.07f
+        )
+        close()
+    }
+    drawPath(leftLeafPath, color = Color(0xFF66BB6A))
+    drawPath(leftLeafPath, color = outlineColor, style = Stroke(width = detailStrokeWidth * 0.8f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+    // Sprout Right Leaf
+    val rightLeafPath = Path().apply {
+        moveTo(sproutBase.x, sproutBase.y - h * 0.085f)
+        cubicTo(
+            sproutBase.x + w * 0.07f, sproutBase.y - h * 0.12f,
+            sproutBase.x + w * 0.08f, sproutBase.y - h * 0.06f,
+            sproutBase.x, sproutBase.y - h * 0.07f
+        )
+        close()
+    }
+    drawPath(rightLeafPath, color = Color(0xFF81C784))
+    drawPath(rightLeafPath, color = outlineColor, style = Stroke(width = detailStrokeWidth * 0.8f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+    // 1. PLAYFUL EARS
+    // Left Ear (Slightly perkier)
+    val leftEarPath = Path().apply {
+        moveTo(cx - w * 0.20f, cy - h * 0.26f)
+        cubicTo(
+            cx - w * 0.28f, cy - h * 0.43f,
+            cx - w * 0.42f, cy - h * 0.37f,
+            cx - w * 0.34f, cy - h * 0.18f
+        )
+        close()
+    }
+    drawPath(leftEarPath, color = earDarkColor)
+    drawPath(leftEarPath, color = outlineColor, style = Stroke(width = mainStrokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+    // Left Inner Ear Pink Pad
+    val leftInnerPad = Path().apply {
+        moveTo(cx - w * 0.23f, cy - h * 0.26f)
+        cubicTo(
+            cx - w * 0.28f, cy - h * 0.37f,
+            cx - w * 0.36f, cy - h * 0.33f,
+            cx - w * 0.31f, cy - h * 0.20f
+        )
+        close()
+    }
+    drawPath(leftInnerPad, color = earPinkColor)
+
+    // Right Ear (Playfully cocked outwards)
+    val rightEarPath = Path().apply {
+        moveTo(cx + w * 0.20f, cy - h * 0.25f)
+        cubicTo(
+            cx + w * 0.32f, cy - h * 0.39f,
+            cx + w * 0.44f, cy - h * 0.32f,
+            cx + w * 0.35f, cy - h * 0.16f
+        )
+        close()
+    }
+    drawPath(rightEarPath, color = earDarkColor)
+    drawPath(rightEarPath, color = outlineColor, style = Stroke(width = mainStrokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+    // Right Inner Ear Pink Pad
+    val rightInnerPad = Path().apply {
+        moveTo(cx + w * 0.23f, cy - h * 0.25f)
+        cubicTo(
+            cx + w * 0.30f, cy - h * 0.34f,
+            cx + w * 0.38f, cy - h * 0.29f,
+            cx + w * 0.32f, cy - h * 0.18f
+        )
+        close()
+    }
+    drawPath(rightInnerPad, color = earPinkColor)
+
+    // 2. CHUBBY SQUISHY BODY SILHOUETTE
+    val cheekyBodyPath = Path().apply {
+        moveTo(cx, cy - h * 0.34f)
+        // Top-left skull
+        cubicTo(cx - w * 0.18f, cy - h * 0.34f, cx - w * 0.30f, cy - h * 0.28f, cx - w * 0.34f, cy - h * 0.18f)
+        // Chubby puffy left cheek
+        cubicTo(cx - w * 0.41f, cy - h * 0.08f, cx - w * 0.40f, cy + h * 0.06f, cx - w * 0.34f, cy + h * 0.14f)
+        // Chubby lower belly
+        cubicTo(cx - w * 0.38f, cy + h * 0.24f, cx - w * 0.38f, cy + h * 0.34f, cx - w * 0.26f, cy + h * 0.38f)
+        // Bottom center
+        cubicTo(cx - w * 0.14f, cy + h * 0.40f, cx + w * 0.14f, cy + h * 0.40f, cx + w * 0.26f, cy + h * 0.38f)
+        // Right chubby belly
+        cubicTo(cx + w * 0.38f, cy + h * 0.34f, cx + w * 0.38f, cy + h * 0.24f, cx + w * 0.34f, cy + h * 0.14f)
+        // Chubby puffy right cheek
+        cubicTo(cx + w * 0.40f, cy + h * 0.06f, cx + w * 0.41f, cy - h * 0.08f, cx + w * 0.34f, cy - h * 0.18f)
+        // Top-right skull
+        cubicTo(cx + w * 0.30f, cy - h * 0.28f, cx + w * 0.18f, cy - h * 0.34f, cx, cy - h * 0.34f)
+        close()
+    }
+    drawPath(cheekyBodyPath, color = bodyFillColor)
+    drawPath(cheekyBodyPath, color = outlineColor, style = Stroke(width = mainStrokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+    // 3. CUTE SITTING FEET
+    // Left Foot
+    val leftFoot = Path().apply {
+        moveTo(cx - w * 0.22f, cy + h * 0.33f)
+        cubicTo(cx - w * 0.35f, cy + h * 0.31f, cx - w * 0.37f, cy + h * 0.40f, cx - w * 0.20f, cy + h * 0.39f)
+        close()
+    }
+    drawPath(leftFoot, color = snoutColor)
+    drawPath(leftFoot, color = outlineColor, style = Stroke(width = detailStrokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+    // Right Foot
+    val rightFoot = Path().apply {
+        moveTo(cx + w * 0.22f, cy + h * 0.33f)
+        cubicTo(cx + w * 0.35f, cy + h * 0.31f, cx + w * 0.37f, cy + h * 0.40f, cx + w * 0.20f, cy + h * 0.39f)
+        close()
+    }
+    drawPath(rightFoot, color = snoutColor)
+    drawPath(rightFoot, color = outlineColor, style = Stroke(width = detailStrokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+    // 4. FRONT PAWS (Playful pose: Left paw playfully tapping cheek / chin, right paw tucked on tummy)
+    // Left Paw (Playfully tapping left cheek "teehee!")
+    val leftPaw = Path().apply {
+        moveTo(cx - w * 0.20f, cy + h * 0.12f)
+        cubicTo(cx - w * 0.27f, cy + h * 0.08f, cx - w * 0.29f, cy + h * 0.18f, cx - w * 0.20f, cy + h * 0.22f)
+        close()
+    }
+    drawPath(leftPaw, color = snoutColor)
+    drawPath(leftPaw, color = outlineColor, style = Stroke(width = detailStrokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+    // Right Paw (Resting comfortably on chest/belly)
+    val rightPaw = Path().apply {
+        moveTo(cx + w * 0.05f, cy + h * 0.23f)
+        lineTo(cx + w * 0.05f, cy + h * 0.34f)
+        cubicTo(cx + w * 0.07f, cy + h * 0.36f, cx + w * 0.13f, cy + h * 0.36f, cx + w * 0.14f, cy + h * 0.33f)
+        lineTo(cx + w * 0.14f, cy + h * 0.23f)
+        close()
+    }
+    drawPath(rightPaw, color = snoutColor)
+    drawPath(rightPaw, color = outlineColor, style = Stroke(width = detailStrokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+    // 5. ROUND SOFT SNOUT / MUZZLE
+    val snoutW = w * 0.26f
+    val snoutH = h * 0.26f
+    val snoutTop = cy - h * 0.15f
+    val snoutPath = Path().apply {
+        addRoundRect(
+            RoundRect(
+                left = cx - snoutW / 2f,
+                top = snoutTop,
+                right = cx + snoutW / 2f,
+                bottom = snoutTop + snoutH,
+                cornerRadius = CornerRadius(snoutW * 0.48f, snoutH * 0.48f)
+            )
+        )
+    }
+    drawPath(snoutPath, color = snoutColor)
+    drawPath(snoutPath, color = outlineColor, style = Stroke(width = mainStrokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+    // Cute Button Nostrils
+    val noseY = cy - h * 0.085f
+    drawCircle(
+        color = outlineColor,
+        radius = w * 0.024f,
+        center = Offset(cx - w * 0.032f, noseY)
+    )
+    drawCircle(
+        color = outlineColor,
+        radius = w * 0.024f,
+        center = Offset(cx + w * 0.032f, noseY)
+    )
+
+    // 6. CHEEKY BLEP TONGUE (Poking out playfully to the right of the split smile)
+    val mouthY = cy + h * 0.005f
+    val tonguePath = Path().apply {
+        moveTo(cx + w * 0.015f, mouthY + h * 0.012f)
+        cubicTo(
+            cx + w * 0.015f, mouthY + h * 0.075f,
+            cx + w * 0.090f, mouthY + h * 0.075f,
+            cx + w * 0.090f, mouthY + h * 0.012f
+        )
+        close()
+    }
+    // Tongue Fill
+    drawPath(tonguePath, color = tongueColor)
+    drawPath(tonguePath, color = tongueOutline, style = Stroke(width = detailStrokeWidth * 0.85f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    // Tongue Center Crease
+    drawLine(
+        color = tongueOutline.copy(alpha = 0.6f),
+        start = Offset(cx + w * 0.052f, mouthY + h * 0.022f),
+        end = Offset(cx + w * 0.052f, mouthY + h * 0.058f),
+        strokeWidth = detailStrokeWidth * 0.65f,
+        cap = StrokeCap.Round
+    )
+    // Tongue Highlight
+    drawCircle(
+        color = Color.White.copy(alpha = 0.55f),
+        radius = w * 0.012f,
+        center = Offset(cx + w * 0.042f, mouthY + h * 0.032f)
+    )
+
+    // Nose-to-Mouth Vertical Philtrum Line
+    drawLine(
+        color = outlineColor,
+        start = Offset(cx, noseY + h * 0.012f),
+        end = Offset(cx, mouthY),
+        strokeWidth = detailStrokeWidth * 1.1f,
+        cap = StrokeCap.Round
+    )
+    // Left Smile Curve
+    val leftSmile = Path().apply {
+        moveTo(cx, mouthY)
+        quadraticTo(cx - w * 0.040f, mouthY + h * 0.026f, cx - w * 0.065f, mouthY + h * 0.005f)
+    }
+    drawPath(leftSmile, color = outlineColor, style = Stroke(width = detailStrokeWidth * 1.2f, cap = StrokeCap.Round))
+    // Right Smile Curve (curving upwards into cheeky grin)
+    val rightSmile = Path().apply {
+        moveTo(cx, mouthY)
+        quadraticTo(cx + w * 0.045f, mouthY + h * 0.028f, cx + w * 0.075f, mouthY - h * 0.005f)
+    }
+    drawPath(rightSmile, color = outlineColor, style = Stroke(width = detailStrokeWidth * 1.2f, cap = StrokeCap.Round))
+
+    // 7. EYES & EXPRESSION: WINK (LEFT) + KAWAII SPARKLE EYE (RIGHT)
+    val eyeLevelY = cy - h * 0.11f
+
+    // LEFT EYE: Cheeky Winking Eye Arc ( >‿ )
+    val leftWink = Path().apply {
+        moveTo(cx - w * 0.26f, eyeLevelY + h * 0.008f)
+        cubicTo(
+            cx - w * 0.24f, eyeLevelY - h * 0.040f,
+            cx - w * 0.16f, eyeLevelY - h * 0.040f,
+            cx - w * 0.14f, eyeLevelY + h * 0.008f
+        )
+    }
+    drawPath(leftWink, color = outlineColor, style = Stroke(width = detailStrokeWidth * 1.45f, cap = StrokeCap.Round))
+    // Cheeky Eyelashes on Left Wink
+    drawLine(
+        color = outlineColor,
+        start = Offset(cx - w * 0.26f, eyeLevelY - h * 0.012f),
+        end = Offset(cx - w * 0.30f, eyeLevelY - h * 0.028f),
+        strokeWidth = detailStrokeWidth * 1.0f,
+        cap = StrokeCap.Round
+    )
+    drawLine(
+        color = outlineColor,
+        start = Offset(cx - w * 0.24f, eyeLevelY - h * 0.026f),
+        end = Offset(cx - w * 0.27f, eyeLevelY - h * 0.045f),
+        strokeWidth = detailStrokeWidth * 0.9f,
+        cap = StrokeCap.Round
+    )
+
+    // Left Eyebrow (Cheeky tilted downward angle)
+    val leftEyebrow = Path().apply {
+        moveTo(cx - w * 0.27f, eyeLevelY - h * 0.052f)
+        quadraticTo(cx - w * 0.20f, eyeLevelY - h * 0.068f, cx - w * 0.14f, eyeLevelY - h * 0.050f)
+    }
+    drawPath(leftEyebrow, color = outlineColor, style = Stroke(width = detailStrokeWidth * 1.05f, cap = StrokeCap.Round))
+
+    // RIGHT EYE: Huge Sparkling Kawaii Anime Eye
+    val rightEyeCenter = Offset(cx + w * 0.205f, eyeLevelY - h * 0.005f)
+    val eyeRx = w * 0.056f
+    val eyeRy = h * 0.068f
+    // Eye Pupil Fill
+    drawOval(
+        color = outlineColor,
+        topLeft = Offset(rightEyeCenter.x - eyeRx, rightEyeCenter.y - eyeRy),
+        size = Size(eyeRx * 2f, eyeRy * 2f)
+    )
+    // Warm Amber Iris Crescent at Bottom
+    drawOval(
+        color = Color(0xFFC78446),
+        topLeft = Offset(rightEyeCenter.x - eyeRx * 0.75f, rightEyeCenter.y + eyeRy * 0.15f),
+        size = Size(eyeRx * 1.5f, eyeRy * 0.70f)
+    )
+    // Big Glossy Catchlight Highlight (Top-left)
+    drawCircle(
+        color = Color.White,
+        radius = eyeRx * 0.48f,
+        center = Offset(rightEyeCenter.x - eyeRx * 0.32f, rightEyeCenter.y - eyeRy * 0.35f)
+    )
+    // Secondary Catchlight Highlight (Bottom-right)
+    drawCircle(
+        color = Color.White,
+        radius = eyeRx * 0.26f,
+        center = Offset(rightEyeCenter.x + eyeRx * 0.35f, rightEyeCenter.y + eyeRy * 0.30f)
+    )
+    // Cute Tiny Highlight Star/Dot (Middle-left)
+    drawCircle(
+        color = Color.White.copy(alpha = 0.85f),
+        radius = eyeRx * 0.14f,
+        center = Offset(rightEyeCenter.x - eyeRx * 0.45f, rightEyeCenter.y + eyeRy * 0.10f)
+    )
+    // Right Eyebrow (Cheerful raised high arch)
+    val rightEyebrow = Path().apply {
+        moveTo(cx + w * 0.14f, eyeLevelY - h * 0.070f)
+        quadraticTo(cx + w * 0.21f, eyeLevelY - h * 0.092f, cx + w * 0.28f, eyeLevelY - h * 0.065f)
+    }
+    drawPath(rightEyebrow, color = outlineColor, style = Stroke(width = detailStrokeWidth * 1.05f, cap = StrokeCap.Round))
+
+    // 8. BIG ROSY CHUBBY BLUSHING CHEEKS WITH WHITE GLOW SHINE
+    val blushY = cy - h * 0.035f
+    // Left Cheek
+    drawOval(
+        color = blushColor,
+        topLeft = Offset(cx - w * 0.33f, blushY - h * 0.045f),
+        size = Size(w * 0.15f, h * 0.095f)
+    )
+    // Left Cheek Highlight Dots (Kawaii shine)
+    drawCircle(
+        color = Color.White.copy(alpha = 0.75f),
+        radius = w * 0.016f,
+        center = Offset(cx - w * 0.27f, blushY - h * 0.015f)
+    )
+    drawCircle(
+        color = Color.White.copy(alpha = 0.75f),
+        radius = w * 0.010f,
+        center = Offset(cx - w * 0.23f, blushY - h * 0.025f)
+    )
+
+    // Right Cheek
+    drawOval(
+        color = blushColor,
+        topLeft = Offset(cx + w * 0.18f, blushY - h * 0.045f),
+        size = Size(w * 0.15f, h * 0.095f)
+    )
+    // Right Cheek Highlight Dots (Kawaii shine)
+    drawCircle(
+        color = Color.White.copy(alpha = 0.75f),
+        radius = w * 0.016f,
+        center = Offset(cx + w * 0.24f, blushY - h * 0.015f)
+    )
+    drawCircle(
+        color = Color.White.copy(alpha = 0.75f),
+        radius = w * 0.010f,
+        center = Offset(cx + w * 0.28f, blushY - h * 0.025f)
+    )
+
+    // 9. GOLDEN SPARKLE TWINKLE (Near the cheeky winking eye)
+    val starCenter = Offset(cx - w * 0.33f, eyeLevelY - h * 0.055f)
+    val starR = w * 0.042f
+    val starPath = Path().apply {
+        moveTo(starCenter.x, starCenter.y - starR)
+        quadraticTo(starCenter.x, starCenter.y, starCenter.x + starR, starCenter.y)
+        quadraticTo(starCenter.x, starCenter.y, starCenter.x, starCenter.y + starR)
+        quadraticTo(starCenter.x, starCenter.y, starCenter.x - starR, starCenter.y)
+        quadraticTo(starCenter.x, starCenter.y, starCenter.x, starCenter.y - starR)
+        close()
+    }
+    drawPath(starPath, color = Color(0xFFFFD54F))
+    drawPath(starPath, color = Color(0xFFFFB300), style = Stroke(width = detailStrokeWidth * 0.5f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    drawCircle(color = Color.White, radius = starR * 0.30f, center = starCenter)
 }
 
 /**
@@ -2245,11 +2643,11 @@ private fun DrawScope.drawCapyCoolGlassesCar(
     drawPath(containerPath, color = Color(0xFFBAC5B0))
 
     val cx = center.x
-    val cy = center.y + radius * 0.06f
+    val cy = center.y + radius * 0.12f
     val w = radius * 1.62f
     val h = radius * 0.72f
 
-    val wheelY = cy + h * 0.32f
+    val wheelY = cy + h * 0.28f
     val frontWheelX = cx - w * 0.28f
     val rearWheelX = cx + w * 0.28f
     val wheelRadius = h * 0.24f
@@ -2272,7 +2670,7 @@ private fun DrawScope.drawCapyCoolGlassesCar(
         cap = StrokeCap.Round
     )
 
-    // Sleek Supercar Lower Chassis (Vibrant Yellow)
+    // Sleek Supercar Lower Chassis (Silver Metallic)
     val supercarBody = Path().apply {
         moveTo(cx - w * 0.48f, cy + h * 0.22f)
         lineTo(cx - w * 0.44f, cy)
@@ -2282,9 +2680,9 @@ private fun DrawScope.drawCapyCoolGlassesCar(
         lineTo(cx - w * 0.48f, cy + h * 0.22f)
         close()
     }
-    drawPath(supercarBody, color = Color(0xFFFFD54F))
+    drawPath(supercarBody, color = Color(0xFFD6DBE2))
 
-    // Low aerodynamic roofline
+    // Low aerodynamic roofline (Gunmetal Silver)
     val roofPath = Path().apply {
         moveTo(cx - w * 0.18f, cy - h * 0.16f)
         lineTo(cx - w * 0.06f, cy - h * 0.58f)
@@ -2296,7 +2694,7 @@ private fun DrawScope.drawCapyCoolGlassesCar(
         lineTo(cx - w * 0.10f, cy - h * 0.16f)
         close()
     }
-    drawPath(roofPath, color = Color(0xFFFFA000))
+    drawPath(roofPath, color = Color(0xFF8C96A5))
 
     // Cabin background
     drawRoundRect(
@@ -2420,7 +2818,7 @@ private fun DrawScope.drawCapyCoolGlassesCar(
 
     // Cool paw resting nonchalantly on the door sill
     drawRoundRect(
-        color = Color(0xFFFBC02D),
+        color = Color(0xFFB4BAC5),
         topLeft = Offset(cx - w * 0.18f, cy - h * 0.02f),
         size = Size(w * 0.44f, h * 0.07f),
         cornerRadius = CornerRadius(3f, 3f)
@@ -2440,7 +2838,7 @@ private fun DrawScope.drawCapyCoolGlassesCar(
         close()
     }
     drawPath(supercarHeadlight, color = Color(0xFFECEFF1))
-    drawPath(supercarHeadlight, color = Color(0xFFE65100), style = Stroke(width = 1.4f))
+    drawPath(supercarHeadlight, color = Color(0xFF6B7785), style = Stroke(width = 1.4f))
     drawCircle(
         color = Color(0xFF78909C),
         radius = h * 0.026f,
@@ -2677,6 +3075,32 @@ private fun DrawScope.drawCapyTintedWindowSUV(
 }
 
 /**
+ * Draws a soft volumetric smoke puff with feathered radial falloff.
+ */
+private fun DrawScope.drawRealisticSmokePuff(
+    center: Offset,
+    radius: Float,
+    coreAlpha: Float = 0.85f,
+    midAlpha: Float = 0.55f,
+    tint: Color = Color.White
+) {
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                tint.copy(alpha = coreAlpha),
+                tint.copy(alpha = midAlpha),
+                tint.copy(alpha = midAlpha * 0.35f),
+                tint.copy(alpha = 0f)
+            ),
+            center = center,
+            radius = radius
+        ),
+        radius = radius,
+        center = center
+    )
+}
+
+/**
  * 4. Bottom-Right: Capybara drifting a lowered drift car with ACTION LINES, TIRE SMOKE, and a VERY SERIOUS FACE!
  */
 private fun DrawScope.drawCapyDriftingCar(
@@ -2739,14 +3163,77 @@ private fun DrawScope.drawCapyDriftingCar(
         cap = StrokeCap.Round
     )
 
-    // DRIFT TIRE SMOKE PUFFS (Erupting around rear wheel and under chassis)
-    val smokeX = rearWheelX + w * 0.08f
-    val smokeY = wheelY + h * 0.05f
-    // Layered soft puffy smoke clouds
-    drawCircle(color = Color(0x88E0E0E0), radius = h * 0.32f, center = Offset(smokeX, smokeY - h * 0.10f))
-    drawCircle(color = Color(0xCCE8E8E8), radius = h * 0.26f, center = Offset(smokeX - w * 0.04f, smokeY))
-    drawCircle(color = Color(0xF0FFFFFF), radius = h * 0.20f, center = Offset(smokeX + w * 0.04f, smokeY + h * 0.04f))
-    drawCircle(color = Color(0xD9FFFFFF), radius = h * 0.16f, center = Offset(smokeX - w * 0.10f, smokeY + h * 0.08f))
+    // REALISTIC VOLUMETRIC DRIFT TYRE SMOKE
+    // Deep ambient smoke shadow layer (creates realistic volume and 3D depth)
+    val smokeShadowTint = Color(0xFF8C9B9E)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.16f, wheelY - h * 0.08f), radius = h * 0.40f, coreAlpha = 0.42f, midAlpha = 0.22f, tint = smokeShadowTint)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.10f, wheelY - h * 0.26f), radius = h * 0.34f, coreAlpha = 0.36f, midAlpha = 0.18f, tint = smokeShadowTint)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.28f, roadY - h * 0.05f), radius = h * 0.30f, coreAlpha = 0.40f, midAlpha = 0.20f, tint = smokeShadowTint)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.38f, wheelY - h * 0.16f), radius = h * 0.28f, coreAlpha = 0.32f, midAlpha = 0.15f, tint = smokeShadowTint)
+
+    // Main billowing smoke clouds (thick dense white / light silver vapour plumes)
+    val whiteSmoke = Color(0xFFFFFFFF)
+    val silverSmoke = Color(0xFFF1F5F9)
+
+    // 1. Direct eruption at spinning tyre contact patch & expanding upward
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.06f, wheelY + h * 0.04f), radius = h * 0.30f, coreAlpha = 0.95f, midAlpha = 0.70f, tint = whiteSmoke)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.13f, wheelY - h * 0.04f), radius = h * 0.34f, coreAlpha = 0.92f, midAlpha = 0.65f, tint = silverSmoke)
+
+    // 2. Rising plume billowing over the rear quarter panel and behind spoiler
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.09f, wheelY - h * 0.20f), radius = h * 0.28f, coreAlpha = 0.88f, midAlpha = 0.60f, tint = whiteSmoke)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.05f, wheelY - h * 0.34f), radius = h * 0.22f, coreAlpha = 0.82f, midAlpha = 0.52f, tint = silverSmoke)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.16f, wheelY - h * 0.36f), radius = h * 0.18f, coreAlpha = 0.75f, midAlpha = 0.45f, tint = whiteSmoke)
+
+    // 3. Ground-hugging vapor trail racing along the asphalt over the skid marks
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.22f, roadY - h * 0.03f), radius = h * 0.24f, coreAlpha = 0.90f, midAlpha = 0.62f, tint = whiteSmoke)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.32f, roadY - h * 0.02f), radius = h * 0.20f, coreAlpha = 0.80f, midAlpha = 0.50f, tint = silverSmoke)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.42f, roadY - h * 0.01f), radius = h * 0.16f, coreAlpha = 0.65f, midAlpha = 0.38f, tint = silverSmoke)
+
+    // 4. Trailing slipstream dissipation billows behind the car
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.24f, wheelY - h * 0.16f), radius = h * 0.25f, coreAlpha = 0.85f, midAlpha = 0.55f, tint = whiteSmoke)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.35f, wheelY - h * 0.24f), radius = h * 0.20f, coreAlpha = 0.75f, midAlpha = 0.45f, tint = silverSmoke)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.44f, wheelY - h * 0.12f), radius = h * 0.16f, coreAlpha = 0.60f, midAlpha = 0.35f, tint = silverSmoke)
+
+    // 5. Crisp bright highlight cores catching the light on billowing crests
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.08f, wheelY + h * 0.02f), radius = h * 0.16f, coreAlpha = 0.98f, midAlpha = 0.85f, tint = Color.White)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.14f, wheelY - h * 0.06f), radius = h * 0.18f, coreAlpha = 0.96f, midAlpha = 0.82f, tint = Color.White)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.10f, wheelY - h * 0.22f), radius = h * 0.14f, coreAlpha = 0.92f, midAlpha = 0.78f, tint = Color.White)
+    drawRealisticSmokePuff(Offset(rearWheelX + w * 0.24f, roadY - h * 0.04f), radius = h * 0.12f, coreAlpha = 0.94f, midAlpha = 0.80f, tint = Color.White)
+
+    // 6. Aerodynamic high-speed smoke wisps shredding into the slipstream
+    drawLine(
+        brush = Brush.linearGradient(
+            colors = listOf(Color(0xD0FFFFFF), Color(0x60F1F5F9), Color(0x00FFFFFF)),
+            start = Offset(rearWheelX + w * 0.14f, wheelY - h * 0.28f),
+            end = Offset(rearWheelX + w * 0.40f, wheelY - h * 0.30f)
+        ),
+        start = Offset(rearWheelX + w * 0.14f, wheelY - h * 0.28f),
+        end = Offset(rearWheelX + w * 0.40f, wheelY - h * 0.30f),
+        strokeWidth = 3.5f,
+        cap = StrokeCap.Round
+    )
+    drawLine(
+        brush = Brush.linearGradient(
+            colors = listOf(Color(0xEAFFFFFF), Color(0x80FFFFFF), Color(0x00FFFFFF)),
+            start = Offset(rearWheelX + w * 0.20f, wheelY - h * 0.10f),
+            end = Offset(rearWheelX + w * 0.46f, wheelY - h * 0.11f)
+        ),
+        start = Offset(rearWheelX + w * 0.20f, wheelY - h * 0.10f),
+        end = Offset(rearWheelX + w * 0.46f, wheelY - h * 0.11f),
+        strokeWidth = 4f,
+        cap = StrokeCap.Round
+    )
+    drawLine(
+        brush = Brush.linearGradient(
+            colors = listOf(Color(0xC8FFFFFF), Color(0x50FFFFFF), Color(0x00FFFFFF)),
+            start = Offset(rearWheelX + w * 0.28f, roadY - h * 0.04f),
+            end = Offset(rearWheelX + w * 0.50f, roadY - h * 0.04f)
+        ),
+        start = Offset(rearWheelX + w * 0.28f, roadY - h * 0.04f),
+        end = Offset(rearWheelX + w * 0.50f, roadY - h * 0.04f),
+        strokeWidth = 3f,
+        cap = StrokeCap.Round
+    )
 
     // High Downforce Rear Wing / Drift Spoiler
     val spoilerPath = Path().apply {
@@ -2930,5 +3417,14 @@ private fun DrawScope.drawCapyDriftingCar(
     drawCircle(color = Color(0xFF1E1E1E), radius = wheelRadius, center = Offset(rearWheelX, wheelY))
     drawCircle(color = Color(0xFF90A4AE), radius = wheelRadius * 0.58f, center = Offset(rearWheelX, wheelY))
     drawCircle(color = Color(0xFF37474F), radius = wheelRadius * 0.25f, center = Offset(rearWheelX, wheelY))
+
+    // Foreground tyre smoke wisp curling around the spinning rear wheel base
+    drawRealisticSmokePuff(
+        center = Offset(rearWheelX + w * 0.03f, roadY - h * 0.02f),
+        radius = h * 0.14f,
+        coreAlpha = 0.72f,
+        midAlpha = 0.42f,
+        tint = Color.White
+    )
 }
 

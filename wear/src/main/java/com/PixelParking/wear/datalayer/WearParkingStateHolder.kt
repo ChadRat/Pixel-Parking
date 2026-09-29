@@ -83,9 +83,13 @@ class WearParkingStateHolder private constructor(private val context: Context) {
         altitude: Double,
         spotName: String,
         address: String,
-        timestamp: Long
+        timestamp: Long,
+        crownOnRight: Boolean? = null
     ) {
-        val currentCrown = _parkingState.value.crownOnRight
+        val currentCrown = crownOnRight ?: prefs.getBoolean("crown_on_right", _parkingState.value.crownOnRight)
+        if (crownOnRight != null) {
+            prefs.edit().putBoolean("crown_on_right", crownOnRight).apply()
+        }
         val state = WearParkingState(
             hasActiveSpot = hasActive,
             latitude = latitude,
@@ -186,6 +190,44 @@ class WearParkingStateHolder private constructor(private val context: Context) {
     }
 
     /**
+     * Requests the phone companion app to restore navigation to the latest saved parking location from history.
+     */
+    fun restoreLatestSpotFromHistory() {
+        // If we have cached non-zero coordinates in SharedPreferences, reactivate immediately for instant UI response
+        val lat = prefs.getFloat("latitude", 0f).toDouble()
+        val lng = prefs.getFloat("longitude", 0f).toDouble()
+        if (lat != 0.0 || lng != 0.0) {
+            val name = prefs.getString("spot_name", "Car") ?: "Car"
+            val address = prefs.getString("address", "") ?: ""
+            val timestamp = prefs.getLong("timestamp", 0L)
+            updateSpot(
+                hasActive = true,
+                latitude = lat,
+                longitude = lng,
+                altitude = 0.0,
+                spotName = name,
+                address = address,
+                timestamp = timestamp
+            )
+        }
+
+        scope.launch {
+            try {
+                val nodeClient = Wearable.getNodeClient(context)
+                val messageClient = Wearable.getMessageClient(context)
+                val nodes = Tasks.await(nodeClient.connectedNodes)
+                Log.d(TAG, "Requesting /restore_latest_spot to ${nodes.size} companion nodes")
+                for (node in nodes) {
+                    Tasks.await(messageClient.sendMessage(node.id, "/restore_latest_spot", ByteArray(0)))
+                    Log.d(TAG, "Sent /restore_latest_spot to node ${node.id}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error sending restore_latest_spot message: ${e.message}", e)
+            }
+        }
+    }
+
+    /**
      * Reads cached DataItems from local Play Services and asks connected phone nodes for fresh sync.
      */
     fun refreshFromDataLayer() {
@@ -205,11 +247,14 @@ class WearParkingStateHolder private constructor(private val context: Context) {
                                 val name = dataMap.getString("spot_name", "Car") ?: "Car"
                                 val address = dataMap.getString("address", "") ?: ""
                                 val timestamp = dataMap.getLong("timestamp", 0L)
-                                updateSpot(hasSpot, lat, lng, alt, name, address, timestamp)
+                                val crownOnRight = if (dataMap.containsKey("crown_on_right")) dataMap.getBoolean("crown_on_right") else null
+                                updateSpot(hasSpot, lat, lng, alt, name, address, timestamp, crownOnRight)
                             } else if (item.uri.path == "/parking_config") {
                                 val dataMap = DataMapItem.fromDataItem(item).dataMap
-                                val crownOnRight = dataMap.getBoolean("crown_on_right", true)
-                                updateCrownPosition(crownOnRight)
+                                if (dataMap.containsKey("crown_on_right")) {
+                                    val crownOnRight = dataMap.getBoolean("crown_on_right", true)
+                                    updateCrownPosition(crownOnRight)
+                                }
                             }
                         }
                     } finally {

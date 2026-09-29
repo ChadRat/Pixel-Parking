@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />
 
     <!-- Bluetooth Permissions -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
@@ -16,6 +18,7 @@
     <!-- Notifications & System -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -96,6 +99,7 @@
             <intent-filter>
                 <action android:name="com.example.autopark.ACTION_GEOFENCE_TRANSITION" />
                 <action android:name="com.example.autopark.ACTION_SIMULATE_GEOFENCE_EXIT" />
+                <action android:name="com.example.autopark.ACTION_ACTIVITY_TRANSITION" />
             </intent-filter>
         </receiver>
 
@@ -156,6 +160,20 @@
         <receiver android:name=".receiver.AlarmReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="com.example.ACTION_DAILY_UPDATE_CHECK" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".receiver.ParkingAlarmDismissReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.ACTION_DISMISS_PARKING_ALARM" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".receiver.ParkingTimerActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.ACTION_RESUME_PARKING_TIMER" />
             </intent-filter>
         </receiver>
         <service
