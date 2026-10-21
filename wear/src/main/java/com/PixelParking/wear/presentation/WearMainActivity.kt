@@ -44,10 +44,13 @@ class WearMainActivity : ComponentActivity() {
             MotionEventCompat.isFromSource(event, InputDeviceCompat.SOURCE_ROTARY_ENCODER)
         ) {
             // Retrieve rotary axis scroll distance (negative is counter-clockwise, positive is clockwise)
-            val delta = -event.getAxisValue(MotionEventCompat.AXIS_SCROLL) *
+            val rawDelta = -event.getAxisValue(MotionEventCompat.AXIS_SCROLL) *
                     ViewConfigurationCompat.getScaledVerticalScrollFactor(
                         android.view.ViewConfiguration.get(this), this
                     )
+            val crownOnRight = com.PixelParking.wear.datalayer.WearParkingStateHolder.getInstance(this)
+                .parkingState.value.crownOnRight
+            val delta = if (crownOnRight) rawDelta else -rawDelta
             rotaryScrollFlow.tryEmit(delta)
             return true
         }
@@ -74,6 +77,7 @@ class WearMainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         sensorManager.start()
+        com.PixelParking.wear.datalayer.WearParkingStateHolder.getInstance(this).refreshFromDataLayer()
     }
 
     override fun onPause() {

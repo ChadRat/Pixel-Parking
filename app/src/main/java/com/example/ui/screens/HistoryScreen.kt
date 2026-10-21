@@ -6,6 +6,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -75,12 +77,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.entity.ParkingSpot
 import com.example.data.entity.isBluetoothEntry
+import com.example.data.entity.isCustomFarAwayEntry
 import com.example.data.entity.isGeofenceEntry
+import com.example.ui.components.CustomFarAwayIcon
 import com.example.ui.components.EditSpotDialog
 import com.example.ui.components.GeofenceIcon
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.PixelRed
 import com.example.ui.viewmodel.ParkingViewModel
+import com.example.util.HapticHelper
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -100,16 +106,19 @@ fun HistoryScreen(
     var editingSpot by remember { mutableStateOf<ParkingSpot?>(null) }
 
     val pinnedSpotIds by viewModel.pinnedSpotIds.collectAsStateWithLifecycle()
+    val isDevFunWalkAwayIcon by viewModel.isDevFunWalkAwayIcon.collectAsStateWithLifecycle()
 
-    val filteredSpots = spots.filter {
-        it.spotName.contains(searchQuery, ignoreCase = true) ||
-                it.address.contains(searchQuery, ignoreCase = true) ||
-                it.floorLevel.contains(searchQuery, ignoreCase = true) ||
-                it.note.contains(searchQuery, ignoreCase = true)
-    }.sortedWith(
-        compareByDescending<ParkingSpot> { pinnedSpotIds.contains(it.id) }
-            .thenByDescending { it.timestamp }
-    )
+    val filteredSpots = remember(spots, searchQuery, pinnedSpotIds) {
+        spots.filter {
+            it.spotName.contains(searchQuery, ignoreCase = true) ||
+                    it.address.contains(searchQuery, ignoreCase = true) ||
+                    it.floorLevel.contains(searchQuery, ignoreCase = true) ||
+                    it.note.contains(searchQuery, ignoreCase = true)
+        }.sortedWith(
+            compareByDescending<ParkingSpot> { pinnedSpotIds.contains(it.id) }
+                .thenByDescending { it.timestamp }
+        )
+    }
 
     val isSheetOpen = editingSpot != null
     val carBadgeStyle by viewModel.carBadgeStyle.collectAsState()
@@ -117,21 +126,19 @@ fun HistoryScreen(
     val isTimerRunning by viewModel.timerIsRunning.collectAsStateWithLifecycle()
     val timerRemainingSeconds by viewModel.timerRemainingSeconds.collectAsStateWithLifecycle()
     val showTimerDialog by viewModel.showTimerDialog.collectAsStateWithLifecycle()
-    val backgroundBlur by animateDpAsState(
-        targetValue = if (isSheetOpen && !showTimerDialog) 20.dp else 0.dp,
-        label = "history_blur"
-    )
+
+    val smoothFling = com.example.util.rememberSmoothFlingBehavior()
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .then(if (backgroundBlur > 0.5.dp) Modifier.blur(backgroundBlur) else Modifier)
             .padding(horizontal = 18.dp)
             .testTag("history_screen"),
         contentPadding = PaddingValues(top = 16.dp, bottom = 110.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        flingBehavior = smoothFling
     ) {
         // Header
         item {
@@ -225,16 +232,18 @@ fun HistoryScreen(
         } else {
             items(filteredSpots, key = { it.id }) { spot ->
                 val isPinned = pinnedSpotIds.contains(spot.id)
-                SwipeableHistorySpotRow(
-                    spot = spot,
-                    isPinned = isPinned,
-                    onTogglePin = { viewModel.togglePinSpot(spot.id) },
-                    onNavigateMaps = { viewModel.openGoogleMapsNavigation(context, spot) },
-                    onNavigateCompass = { viewModel.setActiveNavigationTarget(spot) },
-                    onShare = { viewModel.shareParkingLocation(context, spot) },
-                    onEdit = { editingSpot = spot },
-                    onDelete = { viewModel.deleteSpot(spot.id) }
-                )
+                Box(modifier = Modifier.animateItem()) {
+                    SwipeableHistorySpotRow(
+                        spot = spot,
+                        isPinned = isPinned,
+                        onTogglePin = { viewModel.togglePinSpot(spot.id) },
+                        onNavigateMaps = { viewModel.openGoogleMapsNavigation(context, spot) },
+                        onNavigateCompass = { viewModel.setActiveNavigationTarget(spot) },
+                        onShare = { viewModel.shareParkingLocation(context, spot, linkOnly = true) },
+                        onEdit = { editingSpot = spot },
+                        onDelete = { viewModel.deleteSpot(spot.id) }
+                    )
+                }
             }
         }
     }
@@ -288,16 +297,47 @@ fun HistoryScreen(
                 )
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.clearHistory()
-                        showClearDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = PixelRed),
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.testTag("confirm_clear_history_btn")
+                val coroutineScope = rememberCoroutineScope()
+                var isPressed by remember { mutableStateOf(false) }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (isPressed) PixelRed.copy(alpha = 0.85f) else PixelRed)
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                isPressed = true
+                                val holdJob = coroutineScope.launch {
+                                    for (step in 1..6) {
+                                        delay(500L)
+                                        HapticHelper.performHoldStepTick(context)
+                                        if (step == 6) {
+                                            viewModel.clearHistory()
+                                            showClearDialog = false
+                                        }
+                                    }
+                                }
+                                try {
+                                    do {
+                                        val event = awaitPointerEvent()
+                                    } while (event.changes.any { it.pressed })
+                                } finally {
+                                    isPressed = false
+                                    holdJob.cancel()
+                                }
+                            }
+                        }
+                        .padding(horizontal = 24.dp, vertical = 10.dp)
+                        .testTag("confirm_clear_history_btn"),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(strings.clearAll)
+                    Text(
+                        text = strings.clearAll,
+                        color = Color(0xFF000000),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
                 }
             },
             dismissButton = {
@@ -497,16 +537,22 @@ fun HistorySpotCardContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Circular car or geofence icon
-                // Circular car, geofence, or bluetooth icon
+                // Circular car, geofence, bluetooth, or custom far away icon
                 val isGeo = spot.isGeofenceEntry
                 val isBt = spot.isBluetoothEntry
+                val isFarAway = spot.isCustomFarAwayEntry
                 Surface(
                     shape = CircleShape,
                     color = if (spot.isActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.size(38.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        if (isGeo) {
+                        if (isFarAway) {
+                            CustomFarAwayIcon(
+                                modifier = Modifier.size(20.dp),
+                                tint = if (spot.isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        } else if (isGeo) {
                             GeofenceIcon(
                                 modifier = Modifier.size(20.dp),
                                 tint = if (spot.isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
@@ -541,17 +587,6 @@ fun HistorySpotCardContent(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.weight(1f, fill = false)
                         ) {
-                            if (isPinned) {
-                                Icon(
-                                    imageVector = Icons.Filled.PushPin,
-                                    contentDescription = "Pinned",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier
-                                        .size(13.dp)
-                                        .graphicsLayer { rotationZ = -25f }
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                            }
                             Text(
                                 text = spot.spotName,
                                 fontSize = 15.sp,
@@ -632,11 +667,7 @@ fun HistorySpotCardContent(
                             imageVector = if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
                             contentDescription = if (isPinned) "Unpin entry" else "Pin entry to top",
                             tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier
-                                .size(16.dp)
-                                .graphicsLayer {
-                                    rotationZ = if (isPinned) -25f else 0f
-                                }
+                            modifier = Modifier.size(16.dp)
                         )
                     }
 

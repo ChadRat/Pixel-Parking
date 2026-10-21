@@ -29,6 +29,7 @@ data class AppStrings(
     val noActiveSpotSubtitle: String,
     val autoSavedViaBt: String,
     val autoSavedViaGeofence: String = "Auto-saved via Geofence",
+    val customFarAwaySaved: String = "Custom far away location",
     val gpsLocationSaved: String,
     val noActiveParking: String,
     val recentSpots: String,
@@ -125,6 +126,8 @@ data class AppStrings(
     val dynamicColorSubtitle: String,
     val ignoreBatteryOptimizations: String,
     val ignoreBatteryOptimizationsDesc: String,
+    val persistentMonitorTitle: String = "Always-On Bluetooth Detection",
+    val persistentMonitorDesc: String = "Maintains a silent low-power background service to prevent Android from killing the app when closed",
     val hapticSection: String,
     val hapticSubtitle: String,
     val hapticAuto: String,
@@ -181,6 +184,8 @@ data class AppStrings(
     val capyVariantAdult: String = "Adult Capy",
     val devCapyCarsTitle: String = "Capy cars",
     val devCapyCarsSubtitle: String = "Enable capibara Cars as a third car style option",
+    val whatsNewTitle: String = "What's new",
+    val whatsNewGotIt: String = "Got it",
 
     // Sub-groups to avoid hitting the 254 parameter limit
     val timerStrings: TimerStrings = TimerStrings(),
@@ -252,6 +257,7 @@ data class AppStrings(
     val notificationTimerExpiredBody: String get() = notificationStrings.notificationTimerExpiredBody
     val notificationGpsAcquiring: String get() = notificationStrings.notificationGpsAcquiring
     val notificationLocationSaved: String get() = notificationStrings.notificationLocationSaved
+    val notificationParkingLocationSaved: String get() = notificationStrings.notificationParkingLocationSaved
     val notificationNavigatingTo: String get() = notificationStrings.notificationNavigatingTo
     val notificationMeterAlarmSet: String get() = notificationStrings.notificationMeterAlarmSet
     val notificationDeviceEnabledAutoPark: String get() = notificationStrings.notificationDeviceEnabledAutoPark
@@ -270,6 +276,10 @@ data class AppStrings(
     val geofenceExitNote: String get() = devGeofenceStrings.geofenceExitNote
     val notificationGeofenceSaved: String get() = devGeofenceStrings.notificationGeofenceSaved
     val geofenceSavedSpotDefaultName: String get() = devGeofenceStrings.geofenceSavedSpotDefaultName
+    val undergroundFallbackNote: String get() = devGeofenceStrings.undergroundFallbackNote
+    val undergroundSafeguardNotificationTitle: String get() = devGeofenceStrings.undergroundSafeguardNotificationTitle
+    val undergroundSafeguardNotificationText: String get() = devGeofenceStrings.undergroundSafeguardNotificationText
+    val undergroundFloorLevel: String get() = devGeofenceStrings.undergroundFloorLevel
 
     val exportDataSection: String get() = exportStrings.exportDataSection
     val exportDataSubtitle: String get() = exportStrings.exportDataSubtitle
@@ -299,6 +309,25 @@ data class AppStrings(
     val wearOsApkDownloadButton: String get() = if (languageSection == "Γλώσσα") "Αποθήκευση στις Λήψεις" else "Save to Downloads"
     val wearOsApkShareButton: String get() = if (languageSection == "Γλώσσα") "Αποστολή σε Εφαρμογή Sideload" else "Share to Sideload App"
     val wearOsApkHowToSideload: String get() = if (languageSection == "Γλώσσα") "Οδηγίες Εγκατάστασης (Sideload)" else "How to Sideload"
+
+    // Background Diagnostic & Reliability Strings
+    val backgroundDiagnosticTitle: String get() = if (languageSection == "Γλώσσα") "Ρύθμιση αυτόματης αποθήκευσης" else "Background Auto-Save Setup"
+    val backgroundDiagnosticDesc: String get() = if (languageSection == "Γλώσσα") "Το Android περιορίζει τις εφαρμογές στο παρασκήνιο. Επιτρέψτε απεριόριστη μπαταρία και τοποθεσία στο παρασκήνιο για αυτόματη αποθήκευση κατά την αποσύνδεση Bluetooth." else "Android restricts background apps by default. Grant unrestricted battery and background location so Pixel Parking can automatically save your spot when Bluetooth disconnects."
+    val btnAllowUnrestrictedBattery: String get() = if (languageSection == "Γλώσσα") "Απεριόριστη Μπαταρία" else "Unrestricted Battery"
+    val btnAllowBackgroundLocation: String get() = if (languageSection == "Γλώσσα") "Τοποθεσία Παρασκηνίου" else "Background Location"
+    val btnAllowBluetoothConnect: String get() = if (languageSection == "Γλώσσα") "Άδεια Bluetooth" else "Bluetooth Permission"
+    val backgroundDiagnosticActive: String get() = if (languageSection == "Γλώσσα") "Η αυτόματη αποθήκευση είναι πλήρως ενεργή" else "Background auto-save is fully active"
+    val backgroundSetupRecommended: String get() = if (languageSection == "Γλώσσα") "Συνιστάται" else "Recommended"
+    val backgroundSetupComplete: String get() = if (languageSection == "Γλώσσα") "Όλα έτοιμα" else "All Ready"
+    val backgroundSetupStepBatteryTitle: String get() = if (languageSection == "Γλώσσα") "Απεριόριστη Μπαταρία" else "Unrestricted Battery"
+    val backgroundSetupStepBatteryDesc: String get() = if (languageSection == "Γλώσσα") "Αποτρέπει το Android από το να αναστείλει την εφαρμογή κατά την οδήγηση" else "Prevents Android from pausing auto-save during long drives"
+    val backgroundSetupStepLocationTitle: String get() = if (languageSection == "Γλώσσα") "Τοποθεσία στο Παρασκήνιο" else "Background Location"
+    val backgroundSetupStepLocationDesc: String get() = if (languageSection == "Γλώσσα") "Επιτρέπει την καταγραφή του σημείου με κλειστή οθόνη" else "Captures your spot even when the screen is locked"
+    val backgroundSetupStepBluetoothTitle: String get() = if (languageSection == "Γλώσσα") "Κοντινές Συσκευές" else "Nearby Devices"
+    val backgroundSetupStepBluetoothDesc: String get() = if (languageSection == "Γλώσσα") "Ανιχνεύει άμεσα την αποσύνδεση του αυτοκινήτου" else "Detects car Bluetooth disconnection instantly"
+    val backgroundSetupStatusReady: String get() = if (languageSection == "Γλώσσα") "Έτοιμο" else "Ready"
+    val backgroundSetupStatusAction: String get() = if (languageSection == "Γλώσσα") "Ρύθμιση" else "Enable"
+    val backgroundSetupActiveDesc: String get() = if (languageSection == "Γλώσσα") "Όλες οι ρυθμίσεις έχουν ολοκληρωθεί. Το σημείο στάθμευσης θα αποθηκεύεται αυτόματα." else "All permissions are configured. Your parking spot will save automatically on car disconnect."
 }
 
 data class TimerStrings(
@@ -369,6 +398,7 @@ data class NotificationStrings(
     val notificationTimerExpiredBody: String = "Time is up! Your parking session has ended. Move your car now.",
     val notificationGpsAcquiring: String = "Acquiring GPS location... Please ensure Location is enabled, or search for your address.",
     val notificationLocationSaved: String = "Saved actual location: %s",
+    val notificationParkingLocationSaved: String = "Parking location saved",
     val notificationNavigatingTo: String = "Navigating to: %s",
     val notificationMeterAlarmSet: String = "Meter alarm set for %d mins",
     val notificationDeviceEnabledAutoPark: String = "'%s' enabled for Auto-Parking",
@@ -383,12 +413,16 @@ data class NotificationStrings(
 )
 
 data class DevGeofenceStrings(
-    val devGeofenceAutoParkTitle: String = "Geofence auto-park",
-    val devGeofenceAutoParkSubtitle: String = "Automatically detects when you finish driving and saves your parking spot as you walk away",
+    val devGeofenceAutoParkTitle: String = "Walk Away",
+    val devGeofenceAutoParkSubtitle: String = "Detects when you are driving or moving fast in a vehicle, and automatically saves your parking location as soon as it senses you have started walking. Works reliably in any situation—no Bluetooth connection required.",
     val devSimulateGeofenceExit: String = "Simulate walk after driving",
     val geofenceExitNote: String = "Automatically saved as you walked away after driving.",
     val notificationGeofenceSaved: String = "Car location saved as you walked away: %s",
-    val geofenceSavedSpotDefaultName: String = "Car Parking Location"
+    val geofenceSavedSpotDefaultName: String = "Car Parking Location",
+    val undergroundFallbackNote: String = "Underground parking safeguard: Weak GPS in garage (±%dm). Saved entrance coordinates (±%dm).",
+    val undergroundSafeguardNotificationTitle: String = "Underground Parking Safeguard",
+    val undergroundSafeguardNotificationText: String = "Weak GPS detected. Saved reliable entrance coordinates (±%dm).",
+    val undergroundFloorLevel: String = "Underground"
 )
 
 data class ExportStrings(
@@ -428,6 +462,7 @@ val EnglishStrings = AppStrings(
     noActiveSpotSubtitle = "Your parking spot will save automatically when your car's Bluetooth disconnects, or tap below to record your parking spot manually.",
     autoSavedViaBt = "Auto-saved via Bluetooth disconnect",
     autoSavedViaGeofence = "Auto-saved via Geofence",
+    customFarAwaySaved = "Custom far away location",
     gpsLocationSaved = "GPS location saved",
     noActiveParking = "No Active Parking",
     recentSpots = "Recent Spots",
@@ -516,10 +551,12 @@ val EnglishStrings = AppStrings(
     oledSubtitle = "Deep black backgrounds for AMOLED screens",
     smoothThemeTransition = "Smooth Transition",
     smoothThemeTransitionSubtitle = "Hardware-accelerated cross-fade optimized for 60 to 144 Hz displays",
-    dynamicColor = "Dynamic Color (Material You)",
+    dynamicColor = "Dynamic Color",
     dynamicColorSubtitle = "Match system wallpaper palette",
     ignoreBatteryOptimizations = "Ignore Battery Optimizations",
     ignoreBatteryOptimizationsDesc = "Prevents background operations from being killed by the operating system",
+    persistentMonitorTitle = "Always-On Bluetooth Detection",
+    persistentMonitorDesc = "Maintains a silent low-power background service to prevent Android from killing the app when closed",
     hapticSection = "Haptic Feedback & Vibration",
     hapticSubtitle = "Tactile vibration profiles for navigation & actions",
     hapticAuto = "Auto-Detect (Recommended)",
@@ -550,7 +587,7 @@ val EnglishStrings = AppStrings(
     clearSpotsSubtitle = "Remove all recorded parking entries",
     historyClearedToast = "Parking history cleared",
     aboutSection = "About Pixel Parking",
-    appVersion = "Version 1.2.0 • Material You",
+    appVersion = "Version 0.65 • Material You",
     sourceCodeGitHub = "Source Code on GitHub",
     sourceCodeSubtitle = "github.com/ChadRat/Pixel-Parking",
     licenseTitle = "GNU General Public License v3.0",
@@ -609,6 +646,7 @@ val GreekStrings = AppStrings(
     noActiveSpotSubtitle = "Η τοποθεσία στάθμευσης θα αποθηκευτεί αυτόματα μόλις αποσυνδεθεί το Bluetooth του αυτοκινήτου σας, ή πατήστε παρακάτω για να την καταγράψετε χειροκίνητα.",
     autoSavedViaBt = "Αποθηκεύτηκε αυτόματα μέσω Bluetooth",
     autoSavedViaGeofence = "Αποθηκεύτηκε αυτόματα μέσω Geofence",
+    customFarAwaySaved = "Προσαρμοσμένη απομακρυσμένη τοποθεσία",
     gpsLocationSaved = "Η τοποθεσία GPS αποθηκεύτηκε",
     noActiveParking = "Δεν υπάρχει ενεργή στάθμευση",
     recentSpots = "Πρόσφατες Θέσεις",
@@ -697,10 +735,12 @@ val GreekStrings = AppStrings(
     oledSubtitle = "Βαθύ μαύρο φόντο για οθόνες AMOLED",
     smoothThemeTransition = "Ομαλή Μετάβαση",
     smoothThemeTransitionSubtitle = "Επιταχυνόμενη μετάβαση βελτιστοποιημένη για οθόνες 60 έως 144 Hz",
-    dynamicColor = "Δυναμικό Χρώμα (Material You)",
+    dynamicColor = "Δυναμικό Χρώμα",
     dynamicColorSubtitle = "Προσαρμογή στην ταπετσαρία συστήματος",
     ignoreBatteryOptimizations = "Παράβλεψη Βελτιστοποίησης Μπαταρίας",
     ignoreBatteryOptimizationsDesc = "Αποτρέπει τον τερματισμό των λειτουργιών παρασκηνίου από το λειτουργικό σύστημα",
+    persistentMonitorTitle = "Διαρκής Ανίχνευση Bluetooth",
+    persistentMonitorDesc = "Διατηρεί μια αθόρυβη υπηρεσία παρασκηνίου χαμηλής κατανάλωσης ώστε να μην τερματίζεται η εφαρμογή όταν κλείνει",
     hapticSection = "Ανάδραση Αφής & Δόνηση",
     hapticSubtitle = "Προφίλ δόνησης για πλοήγηση & ενέργειες",
     hapticAuto = "Αυτόματος Εντοπισμός (Προτείνεται)",
@@ -731,7 +771,7 @@ val GreekStrings = AppStrings(
     clearSpotsSubtitle = "Διαγραφή όλων των καταγεγραμμένων θέσεων",
     historyClearedToast = "Το ιστορικό στάθμευσης διαγράφηκε",
     aboutSection = "Σχετικά με το Pixel Parking",
-    appVersion = "Έκδοση 1.2.0 • Material You",
+    appVersion = "Έκδοση 0.65 • Material You",
     sourceCodeGitHub = "Πηγαίος Κώδικας στο GitHub",
     sourceCodeSubtitle = "github.com/ChadRat/Pixel-Parking",
     licenseTitle = "GNU General Public License v3.0",
@@ -823,6 +863,7 @@ val GreekStrings = AppStrings(
         notificationTimerExpiredBody = "Ο χρόνος έληξε! Η συνεδρία στάθμευσης ολοκληρώθηκε. Μετακινήστε το όχημά σας τώρα.",
         notificationGpsAcquiring = "Λήψη τοποθεσίας GPS... Βεβαιωθείτε ότι η Τοποθεσία είναι ενεργοποιημένη ή αναζητήστε τη διεύθυνσή σας.",
         notificationLocationSaved = "Αποθηκεύτηκε η τοποθεσία: %s",
+        notificationParkingLocationSaved = "Η τοποθεσία στάθμευσης αποθηκεύτηκε",
         notificationNavigatingTo = "Πλοήγηση προς: %s",
         notificationMeterAlarmSet = "Το χρονόμετρο ρυθμίστηκε για %d λεπτά",
         notificationDeviceEnabledAutoPark = "'%s' ενεργοποιήθηκε για Αυτόματη Στάθμευση",
@@ -836,12 +877,16 @@ val GreekStrings = AppStrings(
         autoSavedSpotDefaultName = "Θέση Στάθμευσης %s"
     ),
     devGeofenceStrings = DevGeofenceStrings(
-        devGeofenceAutoParkTitle = "Αυτόματη αποθήκευση με Geofence",
-        devGeofenceAutoParkSubtitle = "Αυτόματος εντοπισμός ολοκλήρωσης οδήγησης και αποθήκευση της θέσης μόλις απομακρυνθείτε",
+        devGeofenceAutoParkTitle = "Walk Away",
+        devGeofenceAutoParkSubtitle = "Εντοπίζει πότε οδηγείτε ή κινείστε γρήγορα με όχημα και αποθηκεύει αυτόματα τη θέση στάθμευσης μόλις αντιληφθεί ότι ξεκινήσατε να περπατάτε. Λειτουργεί αξιόπιστα σε κάθε περίσταση—χωρίς να απαιτείται σύνδεση Bluetooth.",
         devSimulateGeofenceExit = "Προσομοίωση απομάκρυνσης μετά την οδήγηση",
         geofenceExitNote = "Αυτόματη αποθήκευση τοποθεσίας όταν απομακρυνθήκατε μετά το αυτοκίνητο.",
         notificationGeofenceSaved = "Η τοποθεσία του αυτοκινήτου αποθηκεύτηκε καθώς απομακρυνθήκατε: %s",
-        geofenceSavedSpotDefaultName = "Τοποθεσία Αυτοκινήτου"
+        geofenceSavedSpotDefaultName = "Τοποθεσία Αυτοκινήτου",
+        undergroundFallbackNote = "Προστασία υπόγειου πάρκινγκ: Αδύναμο GPS στο γκαράζ (±%dm). Αποθηκεύτηκαν συντεταγμένες εισόδου (±%dm).",
+        undergroundSafeguardNotificationTitle = "Προστασία Υπόγειου Πάρκινγκ",
+        undergroundSafeguardNotificationText = "Εντοπίστηκε ασθενές σήμα GPS. Αποθηκεύτηκε η τοποθεσία εισόδου (±%dm).",
+        undergroundFloorLevel = "Υπόγειο"
     ),
     exportStrings = ExportStrings(
         exportDataSection = "Εξαγωγή & Κοινοποίηση Δεδομένων",

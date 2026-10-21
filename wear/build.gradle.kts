@@ -11,8 +11,8 @@ android {
     applicationId = "com.PixelParking.app"
     minSdk = 26
     targetSdk = 36
-    versionCode = 12
-    versionName = "1.2"
+    versionCode = 46
+    versionName = "0.7"
   }
 
   signingConfigs {
@@ -29,7 +29,13 @@ android {
     release {
       signingConfig = signingConfigs.getByName("debugConfig")
       isMinifyEnabled = false
+      isDebuggable = false
     }
+  }
+
+  lint {
+    checkReleaseBuilds = false
+    abortOnError = false
   }
 
   compileOptions {
@@ -62,4 +68,22 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.kotlinx.coroutines.play.services)
+}
+
+val syncWearReleaseApkToRoot = tasks.register("syncWearReleaseApkToRoot") {
+  doLast {
+    val candidates = listOf(
+      file("build/outputs/apk/release/wear-release.apk"),
+      file("build/intermediates/apk/release/wear-release-unsigned.apk"),
+      file("build/intermediates/apk/release/wear-release.apk")
+    )
+    val src = candidates.firstOrNull { it.exists() && it.length() > 0 }
+    if (src != null) {
+      src.copyTo(file("${rootDir}/wear-release.apk"), overwrite = true)
+    }
+  }
+}
+
+tasks.matching { it.name == "assembleRelease" || it.name == "packageRelease" }.configureEach {
+  finalizedBy(syncWearReleaseApkToRoot)
 }

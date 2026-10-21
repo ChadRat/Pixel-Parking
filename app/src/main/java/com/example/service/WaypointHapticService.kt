@@ -60,7 +60,20 @@ class WaypointHapticService : Service() {
                     spotName = spotName,
                     distanceText = "Adaptive haptic navigation active (${hardwareProfile.actuatorType.name})"
                 )
-                startForeground(NOTIFICATION_ID_HAPTIC_SERVICE, notification)
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        androidx.core.app.ServiceCompat.startForeground(
+                            this,
+                            NOTIFICATION_ID_HAPTIC_SERVICE,
+                            notification,
+                            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                        )
+                    } else {
+                        startForeground(NOTIFICATION_ID_HAPTIC_SERVICE, notification)
+                    }
+                } catch (e: Throwable) {
+                    android.util.Log.w("WaypointHapticService", "Failed to start foreground haptic service: ${e.message}")
+                }
             }
 
             ACTION_UPDATE_TELEMETRY -> {

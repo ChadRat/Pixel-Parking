@@ -593,10 +593,10 @@ fun AboutContent(
                             horizontalArrangement = Arrangement.Center
                         ) {
                             if (isCheckingUpdates) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.5.dp,
-                                    color = updateBtnContent
+                                com.example.ui.components.SquigglyLoadingInline(
+                                    color = updateBtnContent,
+                                    width = 38.dp,
+                                    height = 18.dp
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
@@ -870,28 +870,11 @@ fun WavyDivider(
     amplitude: Float = 9f,
     thickness: Float = 6f
 ) {
-    Canvas(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(20.dp)
-    ) {
-        val width = size.width
-        val midY = size.height / 2f
-        val path = Path().apply {
-            moveTo(0f, midY)
-            var x = 0f
-            while (x < width) {
-                val nextX = x + waveLength / 2f
-                val ctrlX = x + waveLength / 4f
-                val targetY = if ((x / (waveLength / 2f)).toInt() % 2 == 0) midY + amplitude else midY - amplitude
-                quadraticTo(ctrlX, targetY, nextX, midY)
-                x = nextX
-            }
-        }
-        drawPath(
-            path = path,
-            color = color,
-            style = Stroke(width = thickness, cap = StrokeCap.Round)
-        )
-    }
+    com.example.ui.components.WavyDivider(
+        modifier = modifier,
+        color = color,
+        waveLength = waveLength,
+        amplitude = amplitude,
+        thickness = thickness
+    )
 }

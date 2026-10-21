@@ -41,6 +41,7 @@ import com.PixelParking.wear.theme.WearColorProvider
 import com.PixelParking.wear.util.WearHapticHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 
 @Composable
 fun WearWaypointScreen(
@@ -55,12 +56,20 @@ fun WearWaypointScreen(
 
     val scrollState = rememberScrollState()
     val focusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
 
     // Listen to Activity-level rotary events with direct raw delta dispatch
     LaunchedEffect(rotaryScrollEvents) {
         rotaryScrollEvents?.collect { delta ->
             scrollState.dispatchRawDelta(delta)
         }
+    }
+
+    val hasActiveTarget = parkingState.hasActiveSpot && (parkingState.latitude != 0.0 || parkingState.longitude != 0.0)
+
+    // Reset scroll position to top whenever navigation starts or ends so the screen never auto-scrolls down
+    LaunchedEffect(hasActiveTarget) {
+        scrollState.scrollTo(0)
     }
 
     // Synchronize target coordinates whenever parking state changes
@@ -88,24 +97,30 @@ fun WearWaypointScreen(
     }
 
     // Effective telemetry values (sensor manager or phone fallback)
-    val effectiveDistance = if (telemetry.hasTarget) {
-        telemetry.distanceMeters
-    } else {
-        parkingState.phoneDistanceMeters ?: 0f
-    }
-
-    val effectiveAngle = if (telemetry.hasTarget) {
-        telemetry.relativeArrowAngle
-    } else {
-        val phoneAngle = parkingState.phoneRelativeAngle ?: 0f
-        if (!parkingState.crownOnRight) {
-            (phoneAngle + 180f) % 360f
+    val effectiveDistance = if (hasActiveTarget) {
+        if (telemetry.hasTarget) {
+            telemetry.distanceMeters
         } else {
-            phoneAngle
+            parkingState.phoneDistanceMeters ?: 0f
         }
+    } else {
+        0f
     }
 
-    val hasActiveTarget = parkingState.hasActiveSpot && (parkingState.latitude != 0.0 || parkingState.longitude != 0.0)
+    val effectiveAngle = if (hasActiveTarget) {
+        if (telemetry.hasTarget) {
+            telemetry.relativeArrowAngle
+        } else {
+            val phoneAngle = parkingState.phoneRelativeAngle ?: 0f
+            if (!parkingState.crownOnRight) {
+                (phoneAngle + 180f) % 360f
+            } else {
+                phoneAngle
+            }
+        }
+    } else {
+        0f // Always look straight ahead (12 o'clock) when no navigation has started
+    }
 
     // User is considered "very close" when within 15 meters of target
     val isVeryClose = hasActiveTarget && effectiveDistance in 0.01f..15.0f
@@ -171,6 +186,9 @@ fun WearWaypointScreen(
                                     onDoubleTap = {
                                         // Rapid double tap restores navigation to the latest saved parking location from history
                                         WearHapticHelper.performClickHaptic(context)
+                                        coroutineScope.launch {
+                                            scrollState.scrollTo(0)
+                                        }
                                         stateHolder.restoreLatestSpotFromHistory()
                                     },
                                     onLongPress = {
@@ -181,12 +199,42 @@ fun WearWaypointScreen(
 
                                         // Trigger strong haptic confirmation
                                         WearHapticHelper.performCarFoundHaptic(context)
-
+                                        coroutineScope.launch {
+                                            scrollState.scrollTo(0)
+                                        }
                                         stateHolder.saveCurrentSpot(lat, lng, alt, "Saved Location")
                                     }
                                 )
                             }
-                        } else Modifier
+                        } else {
+                            // When navigation has been started (hasActiveTarget == true), 3 quick taps on the arrow function as "Car Found"
+                            Modifier.pointerInput(Unit) {
+                                var tapCount = 0
+                                var lastTapTime = 0L
+
+                                detectTapGestures(
+                                    onTap = {
+                                        val currentTime = System.currentTimeMillis()
+                                        if (currentTime - lastTapTime < 550L) {
+                                            tapCount++
+                                        } else {
+                                            tapCount = 1
+                                        }
+                                        lastTapTime = currentTime
+
+                                        if (tapCount >= 3) {
+                                            tapCount = 0
+                                            lastTapTime = 0L
+                                            WearHapticHelper.performCarFoundHaptic(context)
+                                            coroutineScope.launch {
+                                                scrollState.scrollTo(0)
+                                            }
+                                            stateHolder.markCarFound()
+                                        }
+                                    }
+                                )
+                            }
+                        }
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -196,7 +244,8 @@ fun WearWaypointScreen(
                     hasActiveTarget = hasActiveTarget,
                     size = shapeSize,
                     scallopColor = themeScallopColor,
-                    arrowColor = themeArrowColor
+                    arrowColor = themeArrowColor,
+                    distanceCoveredProgress = parkingState.phoneDistanceCoveredProgress
                 )
             }
 
@@ -211,6 +260,9 @@ fun WearWaypointScreen(
                 isVeryClose = isVeryClose,
                 scrollProgress = buttonScrollProgress,
                 onMarkCarFound = {
+                    coroutineScope.launch {
+                        scrollState.scrollTo(0)
+                    }
                     stateHolder.markCarFound()
                 },
                 mapsContainerColor = mapsContainerColor,

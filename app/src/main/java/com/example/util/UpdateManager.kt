@@ -157,21 +157,55 @@ object UpdateManager {
 
     fun isNewerVersion(current: String, latest: String): Boolean {
         return try {
-            val currentClean = current.trim().removePrefix("v").substringBefore("-")
-            val latestClean = latest.trim().removePrefix("v").substringBefore("-")
-            val currentParts = currentClean.split(".").map { it.toIntOrNull() ?: 0 }
-            val latestParts = latestClean.split(".").map { it.toIntOrNull() ?: 0 }
-            val maxLength = maxOf(currentParts.size, latestParts.size)
+            val curClean = current.trim().removePrefix("v").substringBefore("-").trim()
+            val latClean = latest.trim().removePrefix("v").substringBefore("-").trim()
 
-            for (i in 0 until maxLength) {
-                val curr = currentParts.getOrElse(i) { 0 }
-                val lat = latestParts.getOrElse(i) { 0 }
-                if (lat > curr) return true
-                if (lat < curr) return false
+            if (curClean.isEmpty() || latClean.isEmpty()) return false
+            if (curClean.equals(latClean, ignoreCase = true)) return false
+
+            // 1. Direct decimal comparison for versions like 0.7 vs 0.65
+            val curDouble = curClean.toDoubleOrNull()
+            val latDouble = latClean.toDoubleOrNull()
+            if (curDouble != null && latDouble != null) {
+                // Return true only if the available update tag is strictly newer (greater)
+                return latDouble > curDouble
+            }
+
+            // 2. Multi-part semantic version comparison (e.g. 1.2.3 vs 1.2.4)
+            val curParts = curClean.split(".")
+            val latParts = latClean.split(".")
+            val maxLen = maxOf(curParts.size, latParts.size)
+
+            for (i in 0 until maxLen) {
+                val curRaw = curParts.getOrNull(i) ?: "0"
+                val latRaw = latParts.getOrNull(i) ?: "0"
+
+                val curNum = curRaw.toIntOrNull()
+                val latNum = latRaw.toIntOrNull()
+
+                if (curNum != null && latNum != null) {
+                    val normalizedCur: Int
+                    val normalizedLat: Int
+                    if (curRaw.length != latRaw.length && i > 0 && curParts.size == 2 && latParts.size == 2) {
+                        val maxDigits = maxOf(curRaw.length, latRaw.length)
+                        normalizedCur = curRaw.padEnd(maxDigits, '0').toIntOrNull() ?: curNum
+                        normalizedLat = latRaw.padEnd(maxDigits, '0').toIntOrNull() ?: latNum
+                    } else {
+                        normalizedCur = curNum
+                        normalizedLat = latNum
+                    }
+
+                    if (normalizedLat > normalizedCur) return true
+                    if (normalizedLat < normalizedCur) return false
+                } else {
+                    val comp = latRaw.compareTo(curRaw)
+                    if (comp > 0) return true
+                    if (comp < 0) return false
+                }
             }
             false
-        } catch (e: Exception) {
-            latest != current
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -231,6 +265,9 @@ object UpdateManager {
         val strings = getAppStrings(language)
         val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         ensureNotificationChannel(appContext)
+
+        // Trigger dynamic What's New window if developer updated message
+        WhatsNewManager.onUpdateDownloadStarted(appContext)
 
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(appContext, "Downloading update in background...", Toast.LENGTH_SHORT).show()

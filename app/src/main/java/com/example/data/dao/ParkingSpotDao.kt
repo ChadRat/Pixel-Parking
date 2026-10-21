@@ -13,6 +13,9 @@ interface ParkingSpotDao {
     @Query("SELECT * FROM parking_spots ORDER BY timestamp DESC")
     fun getAllSpots(): Flow<List<ParkingSpot>>
 
+    @Query("SELECT * FROM parking_spots ORDER BY timestamp DESC")
+    suspend fun getAllSpotsDirect(): List<ParkingSpot>
+
     @Query("SELECT * FROM parking_spots WHERE isActive = 1 ORDER BY timestamp DESC LIMIT 1")
     fun getActiveSpot(): Flow<ParkingSpot?>
 

@@ -91,7 +91,7 @@ fun PixelAnimatedCarBadge(
     val evoXBitmap = if (style == CarBadgeStyle.CINEMATIC) ImageBitmap.imageResource(id = R.drawable.img_car_evox) else null
 
     // Ultra smooth 1-turn (0 -> 360 deg) clockwise, then 1-turn (360 -> 0 deg) counter-clockwise
-    val mainRotation by infiniteTransition.animateFloat(
+    val mainRotationAnim = infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
@@ -104,11 +104,9 @@ fun PixelAnimatedCarBadge(
         label = "mainScallopRotation"
     )
 
-    val satelliteRotation = -mainRotation * 1.5f
-
     // Very very very slow rotation for car shapes (30 seconds per half cycle)
     // Top-Right & Bottom-Left: 1 turn clockwise, then 1 turn counter-clockwise
-    val trBlShapeRotation by infiniteTransition.animateFloat(
+    val trBlShapeRotationAnim = infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
@@ -122,7 +120,7 @@ fun PixelAnimatedCarBadge(
     )
 
     // Bottom-Right & Top-Left: 1 turn counter-clockwise, then 1 turn clockwise
-    val brTlShapeRotation by infiniteTransition.animateFloat(
+    val brTlShapeRotationAnim = infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = -360f,
         animationSpec = infiniteRepeatable(
@@ -142,6 +140,11 @@ fun PixelAnimatedCarBadge(
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
+            val mainRotation = mainRotationAnim.value
+            val satelliteRotation = -mainRotation * 1.5f
+            val trBlShapeRotation = trBlShapeRotationAnim.value
+            val brTlShapeRotation = brTlShapeRotationAnim.value
+
             val center = Offset(this.size.width / 2f, this.size.height / 2f)
             val h = this.size.height
             val w = this.size.width
@@ -1288,7 +1291,7 @@ private fun DrawScope.drawEvo8Badge(
         }
     } else if (style == CarBadgeStyle.CINEMATIC) {
         clipPath(squirclePath) {
-            drawPorsche911Cinematic(center, width, height, left, top, squirclePath)
+            drawToyotaYarisCinematic(center, width, height, left, top, squirclePath)
         }
     } else {
         clipPath(squirclePath) {
@@ -1298,9 +1301,17 @@ private fun DrawScope.drawEvo8Badge(
 }
 
 /**
- * Cinematic Illustrated Porsche 911 in dynamic 3/4 action angle with speed lines.
+ * Cinematic Illustrated Toyota Yaris Hatchback in dynamic 3/4 action view with speed lines.
+ * Closely models the modern Toyota Yaris / GR Yaris iconic styling:
+ * - Aggressive compact hot-hatch proportions with short sloping nose
+ * - Signature massive trapezoidal lower radiator grille and vertical corner air curtains
+ * - Sharp, swept-back angular headlights with integrated LED eyebrow DRL strip
+ * - Steeply raked windshield and sporty curved compact hatchback roof
+ * - Distinctive up-swept beltline with characteristic Yaris rear quarter window kick
+ * - Integrated aerodynamic rear hatchback roof spoiler and rear taillight blade
+ * - Muscular flared rear wheel haunches and sporty dark alloy wheels firmly on the road
  */
-private fun DrawScope.drawPorsche911Cinematic(
+private fun DrawScope.drawToyotaYarisCinematic(
     center: Offset,
     width: Float,
     height: Float,
@@ -1312,108 +1323,194 @@ private fun DrawScope.drawPorsche911Cinematic(
     drawPath(path = squirclePath, color = Color(0xFFB4C8A2))
 
     val cx = center.x
-    val cy = center.y + height * 0.04f
-    val w = width * 0.86f
-    val h = height * 0.42f
+    val cy = center.y + height * 0.03f
+    val w = width * 0.88f
+    val h = height * 0.44f
 
-    val wheelY = cy + h * 0.28f
-    val frontWheelX = cx - w * 0.26f
-    val rearWheelX = cx + w * 0.24f
+    val wheelY = cy + h * 0.30f
+    val frontWheelX = cx - w * 0.27f
+    val rearWheelX = cx + w * 0.25f
     val wheelRadius = h * 0.22f
 
     // Road firmly touching bottom of tires
     val roadY = wheelY + wheelRadius
     drawRoundRect(
         color = Color(0xFFA2B88F),
-        topLeft = Offset(left + width * 0.06f, roadY),
-        size = Size(width * 0.88f, height * 0.08f),
+        topLeft = Offset(left + width * 0.05f, roadY),
+        size = Size(width * 0.90f, height * 0.08f),
         cornerRadius = CornerRadius(4f, 4f)
     )
 
     // Dynamic Speed Lines / Motion Streaks cutting through
     drawLine(
         color = Color(0xFFFAF4EB).copy(alpha = 0.85f),
-        start = Offset(cx - w * 0.52f, cy - h * 0.58f),
-        end = Offset(cx + w * 0.48f, cy - h * 0.58f),
+        start = Offset(cx - w * 0.52f, cy - h * 0.60f),
+        end = Offset(cx + w * 0.48f, cy - h * 0.60f),
         strokeWidth = 3f,
         cap = StrokeCap.Round
     )
     drawLine(
         color = Color(0xFFFAF4EB).copy(alpha = 0.50f),
-        start = Offset(cx - w * 0.48f, cy - h * 0.35f),
-        end = Offset(cx - w * 0.18f, cy - h * 0.35f),
+        start = Offset(cx - w * 0.48f, cy - h * 0.38f),
+        end = Offset(cx - w * 0.16f, cy - h * 0.38f),
         strokeWidth = 2.5f,
         cap = StrokeCap.Round
     )
     drawLine(
         color = Color(0xFF283B1D).copy(alpha = 0.40f),
-        start = Offset(cx + w * 0.15f, cy + h * 0.42f),
-        end = Offset(cx + w * 0.48f, cy + h * 0.42f),
+        start = Offset(cx + w * 0.14f, cy + h * 0.44f),
+        end = Offset(cx + w * 0.50f, cy + h * 0.44f),
         strokeWidth = 2.5f,
         cap = StrokeCap.Round
     )
 
-    // Porsche 911 Sleek Low Rear Spoiler in 3/4 angle
-    val wingPath = Path().apply {
-        moveTo(cx + w * 0.28f, cy - h * 0.16f)
-        lineTo(cx + w * 0.32f, cy - h * 0.34f)
-        cubicTo(cx + w * 0.36f, cy - h * 0.38f, cx + w * 0.46f, cy - h * 0.36f, cx + w * 0.48f, cy - h * 0.26f)
-        lineTo(cx + w * 0.44f, cy - h * 0.14f)
+    // 1. Aerodynamic Integrated Rear Roof Hatch Spoiler (Signature Yaris Hatchback feature)
+    val spoilerPath = Path().apply {
+        moveTo(cx + w * 0.16f, cy - h * 0.52f)
+        lineTo(cx + w * 0.32f, cy - h * 0.56f)
+        lineTo(cx + w * 0.34f, cy - h * 0.46f)
+        lineTo(cx + w * 0.22f, cy - h * 0.44f)
         close()
     }
-    drawPath(wingPath, color = Color(0xFF283B1D))
+    drawPath(spoilerPath, color = Color(0xFF283B1D))
 
-    // Porsche 911 Aerodynamic Curved Body in 3/4 Angle
-    val porscheBody = Path().apply {
-        moveTo(cx - w * 0.52f, cy + h * 0.28f)
-        lineTo(cx - w * 0.52f, cy + h * 0.10f)
-        cubicTo(cx - w * 0.48f, cy + h * 0.02f, cx - w * 0.38f, cy - h * 0.14f, cx - w * 0.20f, cy - h * 0.22f)
-        cubicTo(cx - w * 0.10f, cy - h * 0.48f, cx + w * 0.06f, cy - h * 0.56f, cx + w * 0.22f, cy - h * 0.42f)
-        cubicTo(cx + w * 0.34f, cy - h * 0.30f, cx + w * 0.44f, cy - h * 0.12f, cx + w * 0.48f, cy + h * 0.08f)
-        lineTo(cx + w * 0.48f, cy + h * 0.28f)
-        lineTo(cx + w * 0.35f, cy + h * 0.28f)
-        cubicTo(cx + w * 0.33f, cy + h * 0.06f, cx + w * 0.15f, cy + h * 0.06f, cx + w * 0.13f, cy + h * 0.28f)
+    // 2. Toyota Yaris Modern Compact Hatchback Body Shell
+    // Short aggressive nose, sloping hood, steep windshield, curved roof, upright muscular hatch
+    val yarisBody = Path().apply {
+        // Start at lower front bumper splitter
+        moveTo(cx - w * 0.52f, cy + h * 0.26f)
+        // Upright, blunt lower front nose
+        lineTo(cx - w * 0.52f, cy + h * 0.12f)
+        // Forward bumper nose tip with Toyota emblem apex
+        cubicTo(cx - w * 0.50f, cy + h * 0.04f, cx - w * 0.48f, cy - h * 0.04f, cx - w * 0.44f, cy - h * 0.06f)
+        // Compact sloping hood line
+        cubicTo(cx - w * 0.38f, cy - h * 0.10f, cx - w * 0.28f, cy - h * 0.16f, cx - w * 0.18f, cy - h * 0.20f)
+        // Raked windshield A-pillar rising to front of roof
+        cubicTo(cx - w * 0.12f, cy - h * 0.38f, cx - w * 0.04f, cy - h * 0.50f, cx + w * 0.02f, cy - h * 0.52f)
+        // Sporty compact hatchback roofline
+        cubicTo(cx + w * 0.08f, cy - h * 0.53f, cx + w * 0.18f, cy - h * 0.52f, cx + w * 0.24f, cy - h * 0.48f)
+        // Sloping rear hatch window and muscular rear shoulder bulge
+        cubicTo(cx + w * 0.32f, cy - h * 0.34f, cx + w * 0.38f, cy - h * 0.16f, cx + w * 0.46f, cy - h * 0.02f)
+        // Muscular rear bumper dropping down
+        cubicTo(cx + w * 0.49f, cy + h * 0.08f, cx + w * 0.49f, cy + h * 0.20f, cx + w * 0.46f, cy + h * 0.28f)
+        // Rear lower diffuser / bumper bottom
+        lineTo(cx + w * 0.37f, cy + h * 0.28f)
+        // Rear wheel cutout arch
+        cubicTo(cx + w * 0.35f, cy + h * 0.06f, cx + w * 0.15f, cy + h * 0.06f, cx + w * 0.13f, cy + h * 0.28f)
+        // Side skirt / rocker panel
         lineTo(cx - w * 0.15f, cy + h * 0.28f)
-        cubicTo(cx - w * 0.17f, cy + h * 0.06f, cx - w * 0.35f, cy + h * 0.06f, cx - w * 0.37f, cy + h * 0.28f)
+        // Front wheel cutout arch
+        cubicTo(cx - w * 0.17f, cy + h * 0.06f, cx - w * 0.37f, cy + h * 0.06f, cx - w * 0.39f, cy + h * 0.28f)
         close()
     }
-    drawPath(porscheBody, color = Color(0xFF4C5E35))
+    drawPath(yarisBody, color = Color(0xFF4C5E35))
 
-    // Teardrop Porsche Windshield & Side Glass in warm ivory
-    val glass = Path().apply {
-        moveTo(cx - w * 0.16f, cy - h * 0.18f)
-        cubicTo(cx - w * 0.08f, cy - h * 0.44f, cx + w * 0.04f, cy - h * 0.48f, cx + w * 0.18f, cy - h * 0.36f)
-        cubicTo(cx + w * 0.24f, cy - h * 0.28f, cx + w * 0.28f, cy - h * 0.14f, cx + w * 0.30f, cy - h * 0.08f)
-        lineTo(cx - w * 0.16f, cy - h * 0.08f)
+    // 3. Characteristic Yaris Greenhouse (Side Windows & Windshield)
+    // Famous sharp upward beltline sweep into C-pillar
+    val greenhouse = Path().apply {
+        // Windshield bottom base
+        moveTo(cx - w * 0.14f, cy - h * 0.18f)
+        // Up along windshield A-pillar
+        lineTo(cx + w * 0.01f, cy - h * 0.48f)
+        // Along roofline
+        lineTo(cx + w * 0.20f, cy - h * 0.45f)
+        // Down rear hatch glass
+        lineTo(cx + w * 0.28f, cy - h * 0.28f)
+        // Sharp characteristic Yaris upward beltline kick
+        cubicTo(cx + w * 0.24f, cy - h * 0.18f, cx + w * 0.16f, cy - h * 0.16f, cx + w * 0.08f, cy - h * 0.16f)
+        lineTo(cx - w * 0.14f, cy - h * 0.18f)
         close()
     }
-    drawPath(glass, color = Color(0xFFF7F4EB))
-    drawLine(color = Color(0xFF4C5E35), start = Offset(cx + w * 0.06f, cy - h * 0.46f), end = Offset(cx + w * 0.06f, cy - h * 0.08f), strokeWidth = 2.5f)
+    drawPath(greenhouse, color = Color(0xFFF7F4EB))
 
-    // Oval Porsche Headlight in 3/4 perspective
+    // Black B-Pillar divider & rear quarter window separator
+    drawLine(
+        color = Color(0xFF283B1D),
+        start = Offset(cx + w * 0.07f, cy - h * 0.48f),
+        end = Offset(cx + w * 0.06f, cy - h * 0.16f),
+        strokeWidth = 3f
+    )
+    drawLine(
+        color = Color(0xFF283B1D),
+        start = Offset(cx + w * 0.18f, cy - h * 0.45f),
+        end = Offset(cx + w * 0.19f, cy - h * 0.18f),
+        strokeWidth = 2f
+    )
+
+    // 4. Iconic Huge Yaris Trapezoidal Front Grille (Modern Toyota "Keen Look")
+    val grillePath = Path().apply {
+        moveTo(cx - w * 0.51f, cy + h * 0.06f)
+        lineTo(cx - w * 0.37f, cy + h * 0.06f)
+        lineTo(cx - w * 0.34f, cy + h * 0.24f)
+        lineTo(cx - w * 0.51f, cy + h * 0.24f)
+        close()
+    }
+    drawPath(grillePath, color = Color(0xFF283B1D))
+
+    // Front Bumper Vertical Side Air Curtain Vent
+    val sideVent = Path().apply {
+        moveTo(cx - w * 0.35f, cy + h * 0.08f)
+        lineTo(cx - w * 0.32f, cy + h * 0.08f)
+        lineTo(cx - w * 0.31f, cy + h * 0.22f)
+        lineTo(cx - w * 0.34f, cy + h * 0.22f)
+        close()
+    }
+    drawPath(sideVent, color = Color(0xFF1D2B15))
+
+    // 5. Sharp Swept-Back Yaris Headlight with LED Eyebrow DRL
     val headlight = Path().apply {
         moveTo(cx - w * 0.46f, cy - h * 0.02f)
-        cubicTo(cx - w * 0.44f, cy - h * 0.12f, cx - w * 0.36f, cy - h * 0.16f, cx - w * 0.32f, cy - h * 0.08f)
-        cubicTo(cx - w * 0.30f, cy - h * 0.02f, cx - w * 0.36f, cy + h * 0.04f, cx - w * 0.44f, cy + h * 0.04f)
+        lineTo(cx - w * 0.41f, cy - h * 0.08f)
+        lineTo(cx - w * 0.28f, cy - h * 0.12f)
+        cubicTo(cx - w * 0.32f, cy - h * 0.04f, cx - w * 0.38f, cy + h * 0.02f, cx - w * 0.46f, cy - h * 0.02f)
         close()
     }
     drawPath(headlight, color = Color(0xFFF7F4EB))
-
-    // Front Bumper Intake Dam
-    drawRoundRect(
-        color = Color(0xFF283B1D),
-        topLeft = Offset(cx - w * 0.50f, cy + h * 0.12f),
-        size = Size(w * 0.14f, h * 0.14f),
-        cornerRadius = CornerRadius(2f, 2f)
+    // Internal LED DRL strip
+    drawLine(
+        color = Color(0xFFFAF4EB),
+        start = Offset(cx - w * 0.45f, cy - h * 0.02f),
+        end = Offset(cx - w * 0.30f, cy - h * 0.11f),
+        strokeWidth = 2f,
+        cap = StrokeCap.Round
     )
 
-    // Wheels in 3/4 perspective with tire touching road
+    // 6. Sculpted Side Body Crease (Signature Yaris dynamic upward swage line)
+    val bodyCrease = Path().apply {
+        moveTo(cx - w * 0.16f, cy + h * 0.16f)
+        cubicTo(cx - w * 0.02f, cy + h * 0.14f, cx + w * 0.14f, cy + h * 0.08f, cx + w * 0.26f, cy - h * 0.02f)
+    }
+    drawPath(
+        path = bodyCrease,
+        color = Color(0xFF283B1D).copy(alpha = 0.45f),
+        style = Stroke(width = 2f, cap = StrokeCap.Round)
+    )
+
+    // 7. Wraparound Rear Taillight Blade (Distinctive C-shaped Yaris tail lamp cluster)
+    val taillight = Path().apply {
+        moveTo(cx + w * 0.36f, cy - h * 0.08f)
+        lineTo(cx + w * 0.45f, cy - h * 0.04f)
+        lineTo(cx + w * 0.46f, cy + h * 0.06f)
+        lineTo(cx + w * 0.42f, cy + h * 0.04f)
+        close()
+    }
+    drawPath(taillight, color = Color(0xFFFAF4EB))
+    drawPath(taillight, color = Color(0xFFB71C1C).copy(alpha = 0.85f))
+
+    // 8. Toyota Front Nose Emblem Oval Accent
+    drawOval(
+        color = Color(0xFFF7F4EB),
+        topLeft = Offset(cx - w * 0.46f, cy + h * 0.01f),
+        size = Size(w * 0.035f, h * 0.045f)
+    )
+
+    // 9. Sporty Hatchback Wheels in 3/4 Perspective with Tires Firmly on Road
     drawCircle(color = Color(0xFF283B1D), radius = wheelRadius, center = Offset(frontWheelX, wheelY))
-    drawCircle(color = Color(0xFF283B1D), radius = wheelRadius * 0.92f, center = Offset(rearWheelX, wheelY))
+    drawCircle(color = Color(0xFF283B1D), radius = wheelRadius * 0.95f, center = Offset(rearWheelX, wheelY))
     drawCircle(color = Color(0xFFD4E3C7), radius = wheelRadius * 0.54f, center = Offset(frontWheelX, wheelY))
-    drawCircle(color = Color(0xFFD4E3C7), radius = wheelRadius * 0.50f, center = Offset(rearWheelX, wheelY))
+    drawCircle(color = Color(0xFFD4E3C7), radius = wheelRadius * 0.52f, center = Offset(rearWheelX, wheelY))
     drawCircle(color = Color(0xFF283B1D), radius = wheelRadius * 0.20f, center = Offset(frontWheelX, wheelY))
-    drawCircle(color = Color(0xFF283B1D), radius = wheelRadius * 0.18f, center = Offset(rearWheelX, wheelY))
+    drawCircle(color = Color(0xFF283B1D), radius = wheelRadius * 0.19f, center = Offset(rearWheelX, wheelY))
 }
 
 /**
@@ -1675,12 +1772,12 @@ private fun DrawScope.drawFerrariF40Cinematic(
         cap = StrokeCap.Round
     )
 
-    // Iconic F40 Box Rear Wing in 3/4 perspective
+    // Way smaller, compact low-profile rear spoiler in 3/4 perspective
     val wingPath = Path().apply {
-        moveTo(cx + w * 0.24f, cy - h * 0.10f)
-        lineTo(cx + w * 0.26f, cy - h * 0.72f)
-        lineTo(cx + w * 0.48f, cy - h * 0.72f)
-        lineTo(cx + w * 0.46f, cy - h * 0.08f)
+        moveTo(cx + w * 0.32f, cy - h * 0.08f)
+        lineTo(cx + w * 0.34f, cy - h * 0.20f)
+        lineTo(cx + w * 0.48f, cy - h * 0.18f)
+        lineTo(cx + w * 0.47f, cy + h * 0.02f)
         close()
     }
     drawPath(wingPath, color = Color(0xFF222F17))

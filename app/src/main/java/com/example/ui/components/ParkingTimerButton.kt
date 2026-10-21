@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.ui.viewmodel.ParkingViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.abs
 
@@ -92,11 +94,11 @@ fun TriangularIndicator(
  * - Fixed digit positioning with overlay triangular arrows (up and down) that never cause layout shift.
  * - When timer is stopped, both the icon and the color parts of the box turn red.
  * - No seconds display.
- * - Single robust gesture detector for Tap, Drag, and 500ms Long-Press Stop.
+ * - Single robust gesture detector for Tap, Drag, and 450ms Long-Press Stop.
  * - Tap 1: Edit hours (arrows visible above and below hours digits).
  * - Tap 2: Edit minutes (arrows visible above and below minutes digits).
  * - Tap 3: Start timer (only if navigation/spot is active).
- * - Press and hold (500ms): Turns red, triggers haptic, stops timer & shows system notification.
+ * - Press and hold (450ms): Turns red, triggers haptic, stops timer & shows system notification.
  */
 @Composable
 fun ParkingTimerButton(
@@ -176,6 +178,7 @@ fun ParkingTimerButton(
 
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+    val coroutineScope = rememberCoroutineScope()
 
     Surface(
         shape = RoundedCornerShape(24.dp),
@@ -191,12 +194,10 @@ fun ParkingTimerButton(
                     var hasDragged = false
                     var stopHoldTriggered = false
 
-                    while (true) {
-                        val event = awaitPointerEvent(pass = PointerEventPass.Main)
-                        val elapsed = System.currentTimeMillis() - startTime
-
-                        // Check 500ms hold condition: Stop the timer (turns red, sends notification)
-                        if (!hasDragged && !stopHoldTriggered && elapsed >= 500L) {
+                    // Immediate 450ms hold timer that fires automatically while finger remains held down
+                    val holdJob = coroutineScope.launch {
+                        delay(450L)
+                        if (!hasDragged && !stopHoldTriggered) {
                             if (currentIsRunning || currentRemainingSeconds > 0 || currentEditMode != TimerPillEditMode.IDLE) {
                                 stopHoldTriggered = true
                                 isHoldingToStop = true
@@ -209,15 +210,21 @@ fun ParkingTimerButton(
                                 }
                             }
                         }
+                    }
+
+                    while (true) {
+                        val event = awaitPointerEvent(pass = PointerEventPass.Main)
+                        val elapsed = System.currentTimeMillis() - startTime
 
                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
                         if (!change.pressed) {
+                            holdJob.cancel()
                             if (isHoldingToStop) {
                                 isHoldingToStop = false
                             }
 
                             // If not held and not dragged, treat as tap
-                            if (!stopHoldTriggered && !hasDragged && elapsed < 500L) {
+                            if (!stopHoldTriggered && !hasDragged && elapsed < 450L) {
                                 if (effectiveIsStopped) {
                                     // When stopped and red, a single tap restarts if time > 0, or cancels to 00:00
                                     editMode = TimerPillEditMode.IDLE
@@ -272,6 +279,7 @@ fun ParkingTimerButton(
                         if (abs(deltaY) > 0.5f) {
                             if (!hasDragged && abs(currentPos.y - down.position.y) > 8f) {
                                 hasDragged = true
+                                holdJob.cancel()
                             }
                             if (currentEditMode != TimerPillEditMode.IDLE) {
                                 change.consume()

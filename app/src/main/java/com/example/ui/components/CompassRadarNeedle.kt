@@ -15,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -55,6 +56,7 @@ fun CompassRadarNeedle(
     distanceMeters: Float,
     isAlignedWithTarget: Boolean,
     hasActiveTarget: Boolean = true,
+    distanceCoveredProgress: Float? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -117,13 +119,24 @@ fun CompassRadarNeedle(
         label = "radarArrowAngle"
     )
 
-    // Calculate proximity scale: fills outer boundary as user gets closer
-    // Far (> 45m): ~0.28f, Close (10m): ~0.72f, Arrived (<= 2.5m): 1.0f (completely fills outer boundary)
+    // Calculate proximity scale: fills outer boundary as user gets closer to the parked car
+    // according to the percentage of distance that the user has covered.
+    // 0% covered: 0.28f (base inner size) -> 100% covered: 1.0f (completely fills outer boundary)
+    var maxObservedDistance by remember(hasActiveTarget) { mutableFloatStateOf(distanceMeters) }
+    if (distanceMeters > maxObservedDistance) {
+        maxObservedDistance = distanceMeters
+    }
+    val fallbackProgress = if (maxObservedDistance <= 2.5f || distanceMeters <= 2.5f) {
+        1.0f
+    } else {
+        val effectiveMax = maxOf(maxObservedDistance, 15f)
+        ((effectiveMax - distanceMeters.coerceAtLeast(2.5f)) / (effectiveMax - 2.5f)).coerceIn(0f, 1f)
+    }
+    val progress = distanceCoveredProgress?.coerceIn(0f, 1f) ?: fallbackProgress
+
     val targetScale = if (!hasActiveTarget) {
         0.28f
     } else {
-        val clamped = distanceMeters.coerceIn(2.5f, 45f)
-        val progress = ((45f - clamped) / (45f - 2.5f)).coerceIn(0f, 1f)
         0.28f + 0.72f * progress
     }
 
@@ -178,13 +191,13 @@ fun CompassRadarNeedle(
 
     val animatedOuterSpeed by animateFloatAsState(
         targetValue = outerTargetSpeed,
-        animationSpec = tween(durationMillis = 2800, easing = smoothEasing),
+        animationSpec = if (fillRatio >= 0.75f) tween(durationMillis = 600, easing = smoothEasing) else tween(durationMillis = 2800, easing = smoothEasing),
         label = "outerBadgeRotationSpeed"
     )
 
     val animatedInnerSpeed by animateFloatAsState(
         targetValue = innerTargetSpeed,
-        animationSpec = tween(durationMillis = 3200, easing = smoothEasing),
+        animationSpec = if (fillRatio >= 0.75f) tween(durationMillis = 600, easing = smoothEasing) else tween(durationMillis = 3200, easing = smoothEasing),
         label = "innerBadgeRotationSpeed"
     )
 
@@ -216,8 +229,15 @@ fun CompassRadarNeedle(
                 } else {
                     0f
                 }
-                // Gentle, non-jerky phase pull that seamlessly locks petals together
-                val phaseNudge = phaseError * 1.2f * smoothSync
+
+                // Dynamic, responsive phase correction:
+                // Gentle pull during early expansion, accelerating to immediate lock-in when close/arrived
+                val phaseRate = if (currentFillRatio >= 0.75f) {
+                    8.0f + 16.0f * ((currentFillRatio - 0.75f) / 0.25f).coerceIn(0f, 1f)
+                } else {
+                    1.5f + 4.5f * smoothSync
+                }
+                val phaseNudge = phaseError * phaseRate * smoothSync
 
                 val newInner = (innerRotationAngle + (currentInnerSpeed + phaseNudge) * safeDt) % 360f
 
@@ -248,10 +268,20 @@ fun CompassRadarNeedle(
             rotate(degrees = outerRotationAngle, pivot = Offset(cx, cy)) {
                 val outerPath = buildScallopPath(cx, cy, maxRadius)
 
+                // Lobe phase alignment (each lobe is 30 degrees = 360 / 12)
+                val rawDiff = (innerRotationAngle - outerRotationAngle) % 30f
+                val lobePhaseOffset = (rawDiff + 45f) % 30f - 15f
+
+                // As inner shape fills outer badge (fillRatio: 0.70 -> 0.95),
+                // smoothly eliminate any remaining lobe phase discrepancy so petals perfectly align
+                val alignProgress = ((fillRatio - 0.70f) / 0.25f).coerceIn(0f, 1f)
+                val smoothAlign = alignProgress * alignProgress * (3f - 2f * alignProgress)
+                val effectiveInnerOffset = lobePhaseOffset * (1f - smoothAlign)
+
                 // 2. Draw inner expanding 12-lobed scalloped filled shape:
                 // Strictly clipped to outerPath so the inner filler NEVER overlaps or exceeds the outer boundary
                 clipPath(path = outerPath) {
-                    rotate(degrees = innerRotationAngle - outerRotationAngle, pivot = Offset(cx, cy)) {
+                    rotate(degrees = effectiveInnerOffset, pivot = Offset(cx, cy)) {
                         val fillRadius = (maxRadius * animatedScale + (strokeWidthPx / 2f) * animatedScale).coerceAtLeast(maxRadius * 0.25f)
                         val innerPath = buildScallopPath(cx, cy, fillRadius)
                         drawPath(
@@ -303,8 +333,8 @@ private fun buildScallopPath(cx: Float, cy: Float, radius: Float): Path {
 
     for (i in 0 until steps) {
         val theta = i * (twoPi / steps)
-        // Fourier modulation for organic rounded petals
-        val modulation = 1f + 0.115f * kotlin.math.cos(lobeCount * theta) - 0.018f * kotlin.math.cos(2 * lobeCount * theta)
+        // Fourier modulation for organic rounded petals with bulbs (mountain tops) made a bit less tall
+        val modulation = 1f + 0.075f * kotlin.math.cos(lobeCount * theta) - 0.012f * kotlin.math.cos(2 * lobeCount * theta)
         val r = radius * modulation
         val x = cx + r * kotlin.math.cos(theta)
         val y = cy + r * kotlin.math.sin(theta)

@@ -37,6 +37,20 @@ import kotlin.math.sin
 fun GeofenceIcon(
     modifier: Modifier = Modifier.size(16.dp),
     tint: Color = MaterialTheme.colorScheme.primary,
+    fillAlpha: Float = 0.14f,
+    isFun: Boolean? = null
+) {
+    WalkAwayIcon(
+        modifier = modifier,
+        tint = tint,
+        isFun = isFun
+    )
+}
+
+@Composable
+fun LegacyGeofencePerimeterIcon(
+    modifier: Modifier = Modifier.size(16.dp),
+    tint: Color = MaterialTheme.colorScheme.primary,
     fillAlpha: Float = 0.14f
 ) {
     Canvas(modifier = modifier) {
@@ -125,12 +139,12 @@ fun GeofenceIcon(
 }
 
 /**
- * Compact pill tag displaying the Geofence icon with an optional text label (e.g. "25m" or "Geofence").
+ * Compact pill tag displaying the Geofence icon with an optional text label (e.g. "50m" or "Geofence").
  */
 @Composable
 fun GeofenceTagBadge(
     modifier: Modifier = Modifier,
-    label: String = "25m",
+    label: String = "50m",
     iconSize: Dp = 12.dp
 ) {
     Surface(

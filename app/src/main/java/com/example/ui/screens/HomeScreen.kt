@@ -50,7 +50,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -83,7 +82,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.entity.ParkingSpot
 import com.example.data.entity.isBluetoothEntry
+import com.example.data.entity.isCustomFarAwayEntry
 import com.example.data.entity.isGeofenceEntry
+import com.example.data.entity.isUndergroundFallback
+import com.example.ui.components.CustomFarAwayIcon
 import com.example.ui.components.EditSpotDialog
 import com.example.ui.components.GeofenceIcon
 import com.example.ui.components.ParkingMeterWidget
@@ -109,7 +111,6 @@ fun HomeScreen(
     viewModel: ParkingViewModel,
     activeSpot: ParkingSpot?,
     recentSpots: List<ParkingSpot>,
-    telemetry: NavigationTelemetry,
     onNavigateTab: (AppTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -123,26 +124,24 @@ fun HomeScreen(
     val isTimerRunning by viewModel.timerIsRunning.collectAsStateWithLifecycle()
     val timerRemainingSeconds by viewModel.timerRemainingSeconds.collectAsStateWithLifecycle()
     val isParkingTimerEnabled by viewModel.isParkingTimerFeatureEnabled.collectAsStateWithLifecycle()
+    val isDevFunWalkAwayIcon by viewModel.isDevFunWalkAwayIcon.collectAsStateWithLifecycle()
     val showTimerDialog by viewModel.showTimerDialog.collectAsStateWithLifecycle()
 
     var showNewParkDialog by remember { mutableStateOf(false) }
     var tapTimestamps by remember { mutableStateOf(emptyList<Long>()) }
 
-    val backgroundBlur by animateDpAsState(
-        targetValue = if (showNewParkDialog && !showTimerDialog) 20.dp else 0.dp,
-        label = "home_blur"
-    )
+    val smoothFling = com.example.util.rememberSmoothFlingBehavior()
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .then(if (backgroundBlur > 0.5.dp) Modifier.blur(backgroundBlur) else Modifier)
             .padding(horizontal = 18.dp)
             .testTag("home_screen"),
         contentPadding = PaddingValues(top = 16.dp, bottom = 110.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        flingBehavior = smoothFling
     ) {
         // App Header: Pixel Parking Title + Theme Mode Pill + BT Pill
         item {
@@ -215,6 +214,13 @@ fun HomeScreen(
             }
         }
 
+        // BACKGROUND RELIABILITY DIAGNOSTIC BANNER (One-tap battery & background location setup)
+        item {
+            com.example.ui.components.BackgroundDiagnosticBanner(
+                onOpenSetupSheet = { viewModel.showBackgroundAutoSaveSetupSheet() }
+            )
+        }
+
         // MAIN PARKING STATE CARD
         item {
             EmptyParkingStateCard(
@@ -262,16 +268,18 @@ fun HomeScreen(
             }
 
             items(recentSpots.take(5), key = { it.id }) { spot ->
-                RecentSpotItem(
-                    spot = spot,
-                    onClick = {
-                        viewModel.setActiveNavigationTarget(spot)
-                        onNavigateTab(AppTab.COMPASS_RADAR)
-                    },
-                    onDelete = {
-                        viewModel.deleteSpot(spot.id)
-                    }
-                )
+                Box(modifier = Modifier.animateItem()) {
+                    RecentSpotItem(
+                        spot = spot,
+                        onClick = {
+                            viewModel.setActiveNavigationTarget(spot)
+                            onNavigateTab(AppTab.COMPASS_RADAR)
+                        },
+                        onDelete = {
+                            viewModel.deleteSpot(spot.id)
+                        }
+                    )
+                }
             }
         }
     }
@@ -354,12 +362,14 @@ fun EmptyParkingStateCard(
 
             Text(
                 text = if (hasActiveSpot) {
-                    if (activeSpot?.isGeofenceEntry == true) strings.autoSavedViaGeofence
+                    if (activeSpot?.isUndergroundFallback == true) (activeSpot?.note?.ifBlank { null } ?: strings.undergroundSafeguardNotificationTitle)
+                    else if (activeSpot?.isCustomFarAwayEntry == true) strings.customFarAwaySaved
+                    else if (activeSpot?.isGeofenceEntry == true) strings.autoSavedViaGeofence
                     else if (activeSpot?.isBluetoothEntry == true || activeSpot?.isAutoSaved == true) strings.autoSavedViaBt
                     else strings.gpsLocationSaved
                 } else strings.noActiveSpotSubtitle,
                 fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (activeSpot?.isUndergroundFallback == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 6.dp)
             )
 
@@ -378,14 +388,16 @@ fun EmptyParkingStateCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    val displayLocation = if (hasActiveSpot && !activeSpot?.address.isNullOrBlank() && activeSpot?.address != "Fetching address...") {
-                        activeSpot.address
-                    } else if (currentAddress.isNotBlank()) {
-                        currentAddress
-                    } else if (currentLocation != null) {
-                        String.format(Locale.US, "GPS: %.5f, %.5f", currentLocation.latitude, currentLocation.longitude)
-                    } else {
-                        "Acquiring live satellite coordinates..."
+                    val displayLocation = remember(hasActiveSpot, activeSpot?.address, currentAddress, currentLocation) {
+                        if (hasActiveSpot && !activeSpot?.address.isNullOrBlank() && activeSpot?.address != "Fetching address...") {
+                            activeSpot.address
+                        } else if (currentAddress.isNotBlank()) {
+                            currentAddress
+                        } else if (currentLocation != null) {
+                            String.format(Locale.US, "GPS: %.5f, %.5f", currentLocation.latitude, currentLocation.longitude)
+                        } else {
+                            "Acquiring live satellite coordinates..."
+                        }
                     }
                     Text(
                         text = displayLocation,
@@ -403,7 +415,14 @@ fun EmptyParkingStateCard(
                         modifier = Modifier.size(32.dp)
                     ) {
                         if (isGpsRefreshing) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            com.example.ui.components.SquigglyLoadingInline(
+                                modifier = Modifier.size(24.dp, 16.dp),
+                                width = 24.dp,
+                                height = 16.dp,
+                                waveLength = 16f,
+                                amplitude = 4f,
+                                strokeWidth = 2.5f
+                            )
                         } else {
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh GPS", modifier = Modifier.size(18.dp))
                         }
@@ -504,13 +523,19 @@ fun RecentSpotItem(
                 // Circular icon container (darker circular inset)
                 val isBt = spot.isBluetoothEntry
                 val isGeo = spot.isGeofenceEntry
+                val isFarAway = spot.isCustomFarAwayEntry
                 Surface(
                     shape = CircleShape,
-                    color = if (isGeo || isBt) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                    color = if (isGeo || isBt || isFarAway) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        if (isGeo) {
+                        if (isFarAway) {
+                            CustomFarAwayIcon(
+                                modifier = Modifier.size(22.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        } else if (isGeo) {
                             GeofenceIcon(
                                 modifier = Modifier.size(22.dp),
                                 tint = MaterialTheme.colorScheme.primary

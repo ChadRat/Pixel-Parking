@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -22,6 +23,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,6 +45,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
@@ -92,6 +98,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import com.example.ui.components.GeofenceIcon
+import com.example.ui.components.WalkAwayIcon
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -156,7 +163,7 @@ fun SettingsScreen(
     val telemetry by viewModel.navigationTelemetry.collectAsState()
     val isCrownOnRight by viewModel.wearCrownOnRight.collectAsState()
     val isGeofenceAutoPark by viewModel.isGeofenceAutoParkEnabled.collectAsState()
-    val isDeveloperUnlocked by viewModel.isDeveloperUnlocked.collectAsState()
+    val isDevFunWalkAwayIcon by viewModel.isDevFunWalkAwayIcon.collectAsState()
 
     var isCrownOptionsExpanded by remember { mutableStateOf(false) }
     var isMilesExpanded by rememberSaveable { mutableStateOf(distanceUnit == DistanceUnit.IMPERIAL) }
@@ -177,16 +184,64 @@ fun SettingsScreen(
         }
     }
 
-    LazyColumn(
+    val geofencePermLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineLocationGranted = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION]
+            ?: (androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+
+        val activityRecognitionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            permissions[android.Manifest.permission.ACTIVITY_RECOGNITION]
+                ?: (androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.ACTIVITY_RECOGNITION
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+        } else true
+
+        if (fineLocationGranted && activityRecognitionGranted) {
+            viewModel.setGeofenceAutoParkEnabled(true)
+        }
+    }
+
+    var selectedReminderIndex by remember { mutableIntStateOf(-1) }
+    var activeReminderBounds by remember { mutableStateOf<Rect?>(null) }
+
+    BackHandler(enabled = selectedReminderIndex != -1) {
+        selectedReminderIndex = -1
+        activeReminderBounds = null
+    }
+
+    val smoothFling = com.example.util.rememberSmoothFlingBehavior()
+
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .padding(horizontal = 18.dp)
-            .testTag("settings_screen"),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 120.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .pointerInput(selectedReminderIndex, activeReminderBounds) {
+                if (selectedReminderIndex != -1 && activeReminderBounds != null) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(pass = PointerEventPass.Initial, requireUnconsumed = false)
+                        if (!activeReminderBounds!!.contains(down.position)) {
+                            selectedReminderIndex = -1
+                            activeReminderBounds = null
+                        }
+                    }
+                }
+            }
     ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .statusBarsPadding()
+                .padding(horizontal = 18.dp)
+                .testTag("settings_screen"),
+            contentPadding = PaddingValues(top = 16.dp, bottom = 120.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            flingBehavior = smoothFling
+        ) {
         // Top Header
         item {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -691,7 +746,7 @@ fun SettingsScreen(
         }
 
         // ==========================================
-        // GEOFENCE WALKING AUTO-PARK (25m)
+        // GEOFENCE WALKING AUTO-PARK (50m)
         // ==========================================
         item {
             Card(
@@ -708,11 +763,11 @@ fun SettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment = Alignment.Top,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
+                            verticalAlignment = Alignment.Top,
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier.weight(1f)
                         ) {
@@ -722,29 +777,77 @@ fun SettingsScreen(
                                 modifier = Modifier.size(54.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    GeofenceIcon(
+                                    WalkAwayIcon(
                                         modifier = Modifier.size(28.dp),
-                                        tint = MaterialTheme.colorScheme.primary
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        isFun = isDevFunWalkAwayIcon
                                     )
                                 }
                             }
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = strings.devGeofenceAutoParkTitle,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = strings.devGeofenceAutoParkTitle,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(100.dp),
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                    ) {
+                                        Text(
+                                            text = "βeta",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Text(
                                     text = strings.devGeofenceAutoParkSubtitle,
                                     fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 17.sp
                                 )
                             }
                         }
+                        Spacer(modifier = Modifier.width(12.dp))
                         Switch(
                             checked = isGeofenceAutoPark,
-                            onCheckedChange = { viewModel.setGeofenceAutoParkEnabled(it) },
+                            onCheckedChange = { enable ->
+                                if (enable) {
+                                    val perms = mutableListOf<String>()
+                                    if (androidx.core.content.ContextCompat.checkSelfPermission(
+                                            context,
+                                            android.Manifest.permission.ACCESS_FINE_LOCATION
+                                        ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        perms.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                                    }
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                                                context,
+                                                android.Manifest.permission.ACTIVITY_RECOGNITION
+                                            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                                        ) {
+                                            perms.add(android.Manifest.permission.ACTIVITY_RECOGNITION)
+                                        }
+                                    }
+                                    if (perms.isNotEmpty()) {
+                                        geofencePermLauncher.launch(perms.toTypedArray())
+                                    } else {
+                                        viewModel.setGeofenceAutoParkEnabled(true)
+                                    }
+                                } else {
+                                    viewModel.setGeofenceAutoParkEnabled(false)
+                                }
+                            },
                             modifier = Modifier.testTag("geofence_autopark_switch")
                         )
                     }
@@ -945,39 +1048,7 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
                     .clickable {
-                        try {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-                                val packageName = context.packageName
-                                if (powerManager != null && !powerManager.isIgnoringBatteryOptimizations(packageName)) {
-                                    try {
-                                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                            data = Uri.parse("package:$packageName")
-                                        }
-                                        context.startActivity(intent)
-                                        return@clickable
-                                    } catch (_: Exception) {
-                                        // Fallback to general battery optimization screen
-                                    }
-                                }
-                                val fallbackIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                                context.startActivity(fallbackIntent)
-                            } else {
-                                val appDetailsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                    data = Uri.parse("package:${context.packageName}")
-                                }
-                                context.startActivity(appDetailsIntent)
-                            }
-                        } catch (e: Exception) {
-                            try {
-                                val appDetailsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                    data = Uri.parse("package:${context.packageName}")
-                                }
-                                context.startActivity(appDetailsIntent)
-                            } catch (_: Exception) {
-                                Toast.makeText(context, "Please configure battery settings", Toast.LENGTH_SHORT).show()
-                            }
-                        }
+                        viewModel.showBackgroundAutoSaveSetupSheet()
                     }
                     .testTag("battery_optimization_settings_card"),
                 shape = RoundedCornerShape(24.dp),
@@ -1040,6 +1111,92 @@ fun SettingsScreen(
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+
+        item {
+            WavyDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                waveLength = 36f,
+                amplitude = 9f,
+                thickness = 6f
+            )
+        }
+
+        // ==========================================
+        // 4b. ALWAYS-ON BLUETOOTH DETECTION
+        // ==========================================
+        item {
+            var isAutoMonitorOn by remember {
+                mutableStateOf(com.example.service.AutoParkLocationService.isMonitoringEnabled(context))
+            }
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .testTag("always_on_bluetooth_card"),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier.size(54.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.DirectionsCar,
+                                    contentDescription = strings.persistentMonitorTitle,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = strings.persistentMonitorTitle,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                lineHeight = 18.sp
+                            )
+                            Text(
+                                text = strings.persistentMonitorDesc,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Switch(
+                        checked = isAutoMonitorOn,
+                        onCheckedChange = { checked ->
+                            isAutoMonitorOn = checked
+                            com.example.service.AutoParkLocationService.setMonitoringEnabled(context, checked)
+                        },
+                        modifier = Modifier.testTag("always_on_bluetooth_switch")
                     )
                 }
             }
@@ -1144,10 +1301,11 @@ fun SettingsScreen(
             }
 
             item {
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 14.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                    thickness = 1.dp
+                WavyDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    waveLength = 36f,
+                    amplitude = 9f,
+                    thickness = 6f
                 )
             }
 
@@ -1162,8 +1320,7 @@ fun SettingsScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 12.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1203,6 +1360,19 @@ fun SettingsScreen(
                             }
                         }
 
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Squiggly divider line between title/description and timer reminder pills
+                        WavyDivider(
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                            waveLength = 36f,
+                            amplitude = 8f,
+                            thickness = 5f
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         // 3-pill timer notification reminder options matching reference screenshot
                         TimerRemindersSelectorRow(
                             reminders = timerReminders,
@@ -1210,7 +1380,10 @@ fun SettingsScreen(
                                 if (viewModel.adjustReminderMinutes(index, delta)) {
                                     HapticHelper.performTimerDigitChangeHaptic(context)
                                 }
-                            }
+                            },
+                            selectedIndex = selectedReminderIndex,
+                            onSelectedIndexChange = { selectedReminderIndex = it },
+                            onSelectedPillBoundsChanged = { activeReminderBounds = it }
                         )
                     }
                 }
@@ -1464,10 +1637,11 @@ fun SettingsScreen(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }
-                }
             }
         }
     }
+    }
+}
 }
 
 @Composable

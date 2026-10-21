@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -79,6 +80,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.data.entity.BluetoothCarDevice
+import com.example.ui.components.BackgroundDiagnosticBanner
 import com.example.ui.viewmodel.AppTab
 import com.example.ui.viewmodel.ParkingViewModel
 
@@ -150,12 +152,34 @@ fun BluetoothSettingsContent(
     }
 
     LaunchedEffect(Unit) {
-        viewModel.syncSystemPairedDevices()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val hasPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+            if (!hasPerm) {
+                btPermissionLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN))
+            } else {
+                viewModel.syncSystemPairedDevices()
+            }
+        } else {
+            viewModel.syncSystemPairedDevices()
+        }
+    }
+
+    LifecycleResumeEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val hasPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+            if (hasPerm) {
+                viewModel.syncSystemPairedDevices()
+            }
+        } else {
+            viewModel.syncSystemPairedDevices()
+        }
+        onPauseOrDispose { }
     }
 
     val monitoredDevices = devices.filter { it.isMonitoredCar }
     val hasMonitored = monitoredDevices.isNotEmpty()
     val isBtProximityEnabled by viewModel.isBtProximityEnabled.collectAsStateWithLifecycle()
+    val isBtDisconnectTestEnabled by viewModel.isBtDisconnectTestEnabled.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -235,13 +259,16 @@ fun BluetoothSettingsContent(
             }
         }
 
+        val smoothFling = com.example.util.rememberSmoothFlingBehavior()
+
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .testTag("bluetooth_settings_screen"),
             contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            flingBehavior = smoothFling
         ) {
             // HERO ACTIVE VEHICLES CARD (Bluetooth icon and top gap removed)
             item {
@@ -294,65 +321,13 @@ fun BluetoothSettingsContent(
                 }
             }
 
-            // BATTERY OPTIMIZATION & BACKGROUND RELIABILITY BANNER
+            // BACKGROUND AUTO-SAVE SETUP & RELIABILITY CARD
             item {
-                val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-                val isIgnoringOptimizations = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && powerManager != null) {
-                    powerManager.isIgnoringBatteryOptimizations(context.packageName)
-                } else true
-
-                if (!isIgnoringOptimizations) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp))
-                            .clickable {
-                                try {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                            data = Uri.parse("package:${context.packageName}")
-                                        }
-                                        context.startActivity(intent)
-                                    }
-                                } catch (_: Exception) {
-                                    val fallbackIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                                    context.startActivity(fallbackIntent)
-                                }
-                            }
-                            .testTag("battery_optimization_bt_warning_card"),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.BatteryAlert,
-                                contentDescription = "Battery Warning",
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Allow Unrestricted Background Battery",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "On long drives (hours), Android Doze may sleep background tasks. Tap to disable battery restrictions so disconnects always trigger immediately.",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    lineHeight = 15.sp
-                                )
-                            }
-                        }
-                    }
-                }
+                BackgroundDiagnosticBanner(
+                    showWhenAllGranted = true,
+                    dismissible = false,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
 
             // CHOOSE FROM PAIRED BLUETOOTH DEVICES
@@ -423,6 +398,11 @@ fun BluetoothSettingsContent(
                         device = dev,
                         isMonitored = dev.isMonitoredCar,
                         isBtProximityEnabled = isBtProximityEnabled,
+                        isBtDisconnectTestEnabled = isBtDisconnectTestEnabled,
+                        onTestDisconnect = { targetDev ->
+                            viewModel.simulateBluetoothDisconnect(targetDev.name, targetDev.address)
+                            Toast.makeText(context, "Testing disconnect for ${targetDev.name}...", Toast.LENGTH_SHORT).show()
+                        },
                         onStartProximityFinder = { targetDev ->
                             val success = viewModel.startBtProximityFinder(targetDev)
                             if (success) {
@@ -538,6 +518,8 @@ fun GoogleCarBluetoothChoiceItem(
     device: BluetoothCarDevice,
     isMonitored: Boolean,
     isBtProximityEnabled: Boolean = false,
+    isBtDisconnectTestEnabled: Boolean = false,
+    onTestDisconnect: (BluetoothCarDevice) -> Unit = {},
     onStartProximityFinder: (BluetoothCarDevice) -> Unit = {},
     onToggleMonitor: (Boolean) -> Unit,
     onRename: () -> Unit,
@@ -629,6 +611,37 @@ fun GoogleCarBluetoothChoiceItem(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    if (isBtDisconnectTestEnabled) {
+                        Surface(
+                            onClick = { onTestDisconnect(device) },
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                            modifier = Modifier
+                                .height(32.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .testTag("test_disconnect_pill_${device.address}")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Bluetooth,
+                                    contentDescription = "Test disconnect",
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "Test",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                        }
+                    }
+
                     if (isBtProximityEnabled) {
                         IconButton(
                             onClick = { onStartProximityFinder(device) },

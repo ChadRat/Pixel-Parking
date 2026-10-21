@@ -39,6 +39,7 @@ import com.example.ui.i18n.localizeFloor
 import com.example.ui.i18n.localizeSpotName
 import com.example.ui.theme.AppThemeMode
 import com.example.util.BluetoothDeviceHelper
+import com.example.util.CoordinateParser
 import com.example.util.HapticHelper
 import com.example.util.HapticProfile
 import com.example.wear.WearDataLayerBridge
@@ -119,12 +120,7 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
 
     private val _appLanguage = MutableStateFlow(
         try {
-            val systemDefaultLang = if (java.util.Locale.getDefault().language.equals("el", ignoreCase = true)) {
-                AppLanguage.GREEK.name
-            } else {
-                AppLanguage.ENGLISH.name
-            }
-            AppLanguage.valueOf(prefs.getString("app_language", systemDefaultLang) ?: systemDefaultLang)
+            AppLanguage.valueOf(prefs.getString("app_language", AppLanguage.ENGLISH.name) ?: AppLanguage.ENGLISH.name)
         } catch (_: Exception) {
             AppLanguage.ENGLISH
         }
@@ -206,24 +202,57 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     private val _isBtProximityEnabled = MutableStateFlow(prefs.getBoolean("bt_proximity_enabled", false))
     val isBtProximityEnabled: StateFlow<Boolean> = _isBtProximityEnabled.asStateFlow()
 
+    // Developer toggle to test Bluetooth disconnect on any vehicle in Car BT menu
+    private val _isBtDisconnectTestEnabled = MutableStateFlow(prefs.getBoolean("bt_disconnect_test_enabled", false))
+    val isBtDisconnectTestEnabled: StateFlow<Boolean> = _isBtDisconnectTestEnabled.asStateFlow()
+
     private val _isDevHapticDiagnostics = MutableStateFlow(prefs.getBoolean("dev_haptic_diag", false))
     val isDevHapticDiagnostics: StateFlow<Boolean> = _isDevHapticDiagnostics.asStateFlow()
 
     private val _isParkingTimerFeatureEnabled = MutableStateFlow(prefs.getBoolean("parking_timer_feature_enabled", true))
     val isParkingTimerFeatureEnabled: StateFlow<Boolean> = _isParkingTimerFeatureEnabled.asStateFlow()
 
-    // Geofencing Auto-Park Feature (Default enabled, 25m perimeter)
+    // Geofencing Auto-Park Feature (Default disabled, 50m perimeter)
     private val autoParkPrefs = application.getSharedPreferences(com.example.geofence.GeofenceManager.PREFS_NAME, Context.MODE_PRIVATE)
-    private val _isGeofenceAutoParkEnabled = MutableStateFlow(autoParkPrefs.getBoolean(com.example.geofence.GeofenceManager.KEY_GEOFENCE_ENABLED, true))
+    private val _isGeofenceAutoParkEnabled = MutableStateFlow(autoParkPrefs.getBoolean(com.example.geofence.GeofenceManager.KEY_GEOFENCE_ENABLED, false))
     val isGeofenceAutoParkEnabled: StateFlow<Boolean> = _isGeofenceAutoParkEnabled.asStateFlow()
 
     // Capy Cars Option in Developer Options (Default disabled)
     private val _isDevCapyCarsEnabled = MutableStateFlow(prefs.getBoolean("dev_capy_cars_enabled", false))
     val isDevCapyCarsEnabled: StateFlow<Boolean> = _isDevCapyCarsEnabled.asStateFlow()
 
+    // Geofence after Bluetooth Option in Developer Options (Default disabled)
+    private val _isDevGeofenceAfterBtEnabled = MutableStateFlow(
+        autoParkPrefs.getBoolean(com.example.geofence.GeofenceManager.KEY_DEV_ALLOW_GEOFENCE_AFTER_BT, false)
+    )
+    val isDevGeofenceAfterBtEnabled: StateFlow<Boolean> = _isDevGeofenceAfterBtEnabled.asStateFlow()
+
     // Text Weight Option in Developer Options (Default 400 - System Default)
     private val _devTextWeight = MutableStateFlow(prefs.getInt("dev_text_weight", 400))
     val devTextWeight: StateFlow<Int> = _devTextWeight.asStateFlow()
+
+    // Developer option to remove custom smooth scrolling animation, keeping default simple and smooth scrolling
+    private val _isDevSimpleScrollEnabled = MutableStateFlow(prefs.getBoolean("dev_simple_scroll_enabled", false))
+    val isDevSimpleScrollEnabled: StateFlow<Boolean> = _isDevSimpleScrollEnabled.asStateFlow()
+
+    // Developer Fun Walk Away Icon Option (Default disabled)
+    private val _isDevFunWalkAwayIcon = MutableStateFlow(prefs.getBoolean("dev_fun_walk_away_icon", false))
+    val isDevFunWalkAwayIcon: StateFlow<Boolean> = _isDevFunWalkAwayIcon.asStateFlow()
+
+    // Developer Custom Far Away Coordinates Options (Default disabled)
+    private val _isCustomFarAwayCoordsEnabled = MutableStateFlow(
+        prefs.getBoolean("dev_custom_far_away_coords_enabled", false)
+    )
+    val isCustomFarAwayCoordsEnabled: StateFlow<Boolean> = _isCustomFarAwayCoordsEnabled.asStateFlow()
+
+    private val _customFarAwayCoordsInput = MutableStateFlow(
+        prefs.getString("dev_custom_far_away_coords_input", "") ?: ""
+    )
+    val customFarAwayCoordsInput: StateFlow<String> = _customFarAwayCoordsInput.asStateFlow()
+
+    // Developer Waypoint Proximity Fill Simulator State (null = use real GPS progress)
+    private val _devSimulatedProgress = MutableStateFlow<Float?>(null)
+    val devSimulatedProgress: StateFlow<Float?> = _devSimulatedProgress.asStateFlow()
 
     // Active Bluetooth Proximity Tracking
     val btProximityState: StateFlow<BtProximityState> = bluetoothProximityManager.proximityState
@@ -307,6 +336,15 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     private val _showTimerDialog = MutableStateFlow(false)
     val showTimerDialog: StateFlow<Boolean> = _showTimerDialog.asStateFlow()
 
+    private val _showWhatsNew = MutableStateFlow(false)
+    val showWhatsNew: StateFlow<Boolean> = _showWhatsNew.asStateFlow()
+
+    private val _showBackgroundAutoSaveSetup = MutableStateFlow(false)
+    val showBackgroundAutoSaveSetup: StateFlow<Boolean> = _showBackgroundAutoSaveSetup.asStateFlow()
+
+    private val _whatsNewMessage = MutableStateFlow(com.example.util.WhatsNewManager.CURRENT_MESSAGE)
+    val whatsNewMessage: StateFlow<String> = _whatsNewMessage.asStateFlow()
+
     private val _alarmSoundTitle = MutableStateFlow(com.example.util.AlarmSoundHelper.getAlarmTitle(application))
     val alarmSoundTitle: StateFlow<String> = _alarmSoundTitle.asStateFlow()
 
@@ -316,39 +354,57 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         .map { it.relativeAngle }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0f)
 
+    private val wearDataLayerBridge = WearDataLayerBridge.getInstance(application)
+
     // Derived Navigation Telemetry: Distance & Relative Arrow Angle
     val navigationTelemetry = combine(
-        activeSpot,
-        currentLocation,
+        combine(activeSpot, currentLocation) { spot, loc -> Pair(spot, loc) },
         compassState,
         _distanceUnit,
-        _appLanguage
-    ) { spot, loc, compass, unit, lang ->
-        if (spot == null || loc == null || !spot.isActive) {
+        _appLanguage,
+        _devSimulatedProgress
+    ) { (spot, loc), compass, unit, lang, devProgress ->
+        if (spot == null || !spot.isActive) {
             compassSensorManager.setTargetBearing(null)
+            val effectiveProgress = devProgress ?: 0f
+            val hasSim = devProgress != null
+            val effectiveDist = if (hasSim) (100f * (1f - effectiveProgress) + 2.5f * effectiveProgress) else 0f
             NavigationTelemetry(
-                distanceMeters = 0f,
-                formattedDistance = "No GPS Fix",
+                distanceMeters = effectiveDist,
+                formattedDistance = if (hasSim) LocationHelper.formatDistanceWithUnit(effectiveDist, if (lang == AppLanguage.ENGLISH) unit else DistanceUnit.METRIC) else "No GPS Fix",
                 targetBearing = 0f,
                 relativeArrowAngle = 0f,
                 altitudeDifference = 0.0,
-                hasActiveTarget = false
+                hasActiveTarget = hasSim,
+                distanceCoveredProgress = effectiveProgress
             )
         } else {
-            val dist = LocationHelper.calculateDistanceMeters(
-                loc.latitude,
-                loc.longitude,
-                spot.latitude,
-                spot.longitude
-            )
-            val bearing = LocationHelper.calculateBearingDegrees(
-                loc.latitude,
-                loc.longitude,
-                spot.latitude,
-                spot.longitude
-            )
+            val dist = if (loc != null) {
+                LocationHelper.calculateDistanceMeters(
+                    loc.latitude,
+                    loc.longitude,
+                    spot.latitude,
+                    spot.longitude
+                )
+            } else {
+                100f
+            }
+            val bearing = if (loc != null) {
+                LocationHelper.calculateBearingDegrees(
+                    loc.latitude,
+                    loc.longitude,
+                    spot.latitude,
+                    spot.longitude
+                )
+            } else {
+                0f
+            }
             val relativeAngle = (bearing - compass.azimuthDegrees + 360f) % 360f
-            val altDiff = spot.altitude - (loc.altitude.takeIf { it != 0.0 } ?: spot.altitude)
+            val altDiff = if (loc != null) {
+                spot.altitude - (loc.altitude.takeIf { it != 0.0 } ?: spot.altitude)
+            } else {
+                0.0
+            }
 
             if (dist <= 3.0f) {
                 compassSensorManager.setTargetBearing(null)
@@ -357,32 +413,41 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             }
 
             val isAligned = kotlin.math.abs(relativeAngle) < 15f || relativeAngle > 345f
-            if (spot != null && spot.isActive) {
+            val realProgress = getDistanceCoveredProgress(spot.id, dist, isBtMode = false)
+            val effectiveProgress = devProgress ?: realProgress
+            val effectiveDist = if (devProgress != null) {
+                val maxRef = maxOf(prefs.getFloat("max_dist_spot_${spot.id}", 100f), 100f)
+                maxRef * (1f - effectiveProgress) + 2.5f * effectiveProgress
+            } else {
+                dist
+            }
+
+            if (spot.isActive) {
                 wearDataLayerBridge.syncLiveTelemetry(
-                    distanceMeters = dist,
+                    distanceMeters = effectiveDist,
                     targetBearing = bearing,
                     relativeArrowAngle = relativeAngle,
-                    isAligned = isAligned
+                    isAligned = isAligned,
+                    distanceCoveredProgress = effectiveProgress
                 )
             }
 
             val effectiveUnit = if (lang == AppLanguage.ENGLISH) unit else DistanceUnit.METRIC
             NavigationTelemetry(
-                distanceMeters = dist,
-                formattedDistance = LocationHelper.formatDistanceWithUnit(dist, effectiveUnit),
+                distanceMeters = effectiveDist,
+                formattedDistance = LocationHelper.formatDistanceWithUnit(effectiveDist, effectiveUnit),
                 targetBearing = bearing,
                 relativeArrowAngle = relativeAngle,
                 altitudeDifference = altDiff,
-                hasActiveTarget = true
+                hasActiveTarget = true,
+                distanceCoveredProgress = effectiveProgress
             )
         }
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
-        NavigationTelemetry(0f, "--", 0f, 0f, 0.0, false)
+        NavigationTelemetry(0f, "--", 0f, 0f, 0.0, false, 0f)
     )
-
-    private val wearDataLayerBridge = WearDataLayerBridge.getInstance(application)
 
     private val timerActionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -417,9 +482,19 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             application.registerReceiver(timerActionReceiver, filter)
         }
 
+        var previousActiveSpotId: Long? = null
+        var isInitialCollection = true
         viewModelScope.launch {
             activeSpot.collect { spot ->
                 wearDataLayerBridge.syncParkingSpot(spot)
+                if (!isInitialCollection && spot != null && spot.id != previousActiveSpotId && spot.isAutoSaved) {
+                    stopCompass()
+                    if (_selectedTab.value == AppTab.COMPASS_RADAR) {
+                        _selectedTab.value = AppTab.DASHBOARD
+                    }
+                }
+                isInitialCollection = false
+                previousActiveSpotId = spot?.id
             }
         }
 
@@ -434,6 +509,18 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
                 updateDaytimeState()
                 kotlinx.coroutines.delay(60_000L)
             }
+        }
+
+        viewModelScope.launch {
+            com.example.util.WhatsNewManager.showWhatsNewEvent.collect { msg ->
+                _whatsNewMessage.value = msg
+                _showWhatsNew.value = true
+            }
+        }
+
+        if (com.example.util.WhatsNewManager.checkAndConsumePendingShow(application)) {
+            _whatsNewMessage.value = com.example.util.WhatsNewManager.CURRENT_MESSAGE
+            _showWhatsNew.value = true
         }
     }
 
@@ -510,6 +597,7 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         _wearCrownOnRight.value = onRight
         prefs.edit().putBoolean("wear_crown_on_right", onRight).apply()
         wearDataLayerBridge.syncCrownPosition(onRight)
+        wearDataLayerBridge.syncParkingSpot(activeSpot.value)
     }
 
 
@@ -630,6 +718,7 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             _isGpsRefreshing.value = true
             val loc = LocationHelper.getCurrentLocation(getApplication())
             if (loc != null) {
+                LocationHelper.persistLocation(getApplication(), loc)
                 _currentLocation.value = loc
                 updateDaytimeState()
                 val addr = LocationHelper.getAddressFromCoordinates(getApplication(), loc.latitude, loc.longitude)
@@ -708,8 +797,8 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             withContext(Dispatchers.Main) {
                 com.example.notification.ParkingNotificationHelper.showSystemNotification(
                     getApplication(),
-                    currentStrings.appName,
-                    String.format(currentStrings.notificationLocationSaved, address)
+                    currentStrings.notificationParkingLocationSaved,
+                    address
                 )
             }
         }
@@ -800,10 +889,39 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun getDistanceCoveredProgress(spotId: Long?, currentDistance: Float, isBtMode: Boolean = false): Float {
+        if (_devSimulatedProgress.value != null) {
+            return _devSimulatedProgress.value!!
+        }
+        if (currentDistance <= 2.5f) return 1.0f
+        val key = if (isBtMode) "max_dist_bt_proximity" else "max_dist_spot_${spotId ?: 0L}"
+        val savedMax = prefs.getFloat(key, 0f)
+        val maxDist = if (currentDistance > savedMax) {
+            prefs.edit().putFloat(key, currentDistance).apply()
+            currentDistance
+        } else {
+            savedMax
+        }
+        val effectiveMax = maxOf(maxDist, 15f)
+        if (effectiveMax <= 2.5f) return 1.0f
+        return ((effectiveMax - currentDistance) / (effectiveMax - 2.5f)).coerceIn(0f, 1f)
+    }
+
+    fun setDevSimulatedProgress(progress: Float?) {
+        _devSimulatedProgress.value = progress?.coerceIn(0f, 1f)
+    }
+
+    fun resetDevSimulatedProgress() {
+        _devSimulatedProgress.value = null
+    }
+
     fun markCarFound() {
         viewModelScope.launch {
             val current = activeSpot.value ?: return@launch
             repository.updateParkingSpot(current.copy(isActive = false))
+            prefs.edit().remove("max_dist_spot_${current.id}").apply()
+            com.example.geofence.GeofenceManager.clearCandidateParkingState(getApplication())
+            com.example.geofence.GeofenceManager.removeGeofences(getApplication())
             compassSensorManager.setTargetBearing(null)
             compassSensorManager.cancelVibration()
             stopRadarService()
@@ -834,33 +952,46 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     fun syncSystemPairedDevices() {
         viewModelScope.launch {
             val systemBonded = BluetoothDeviceHelper.getSystemBondedDevices(getApplication())
-            if (!systemBonded.isNullOrEmpty()) {
+            if (systemBonded != null) {
                 val existing = repository.getAllDevicesDirect()
                 val existingMap = existing.associateBy { it.address.uppercase() }
+                val bondedAddresses = systemBonded.map { it.address.uppercase() }.toSet()
+
                 val hasAnyMonitored = existing.any { it.isMonitoredCar }
 
+                // Register or update currently paired devices from the phone
                 systemBonded.forEach { dev ->
                     val found = existingMap[dev.address.uppercase()]
                     if (found == null) {
+                        val isCar = !hasAnyMonitored && (dev.deviceType == "Car" || com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords(dev.name) || systemBonded.size == 1)
                         repository.registerBluetoothDevice(
                             dev.copy(
                                 originalName = dev.name,
-                                isMonitoredCar = false
+                                isMonitoredCar = isCar
                             ),
-                            setAsPrimary = false
+                            setAsPrimary = isCar
                         )
                     } else {
-                        // Preserve user custom renaming and record original hardware name
+                        // Preserve user custom renaming and monitored state, and record original hardware name
                         val origName = if (found.originalName.isNotBlank()) found.originalName else dev.name
                         val effectiveName = if (found.isCustomRenamed) found.name else dev.name
-                        if (found.name != effectiveName || found.originalName != origName) {
+                        if (found.name != effectiveName || found.originalName != origName || found.deviceType != dev.deviceType) {
                             repository.updateBluetoothDevice(
                                 found.copy(
                                     name = effectiveName,
-                                    originalName = origName
+                                    originalName = origName,
+                                    deviceType = dev.deviceType
                                 )
                             )
                         }
+                    }
+                }
+
+                // Strictly ensure only paired/saved devices on the phone are kept:
+                // Remove any devices from the database that are no longer paired with the phone
+                existing.forEach { dev ->
+                    if (!bondedAddresses.contains(dev.address.uppercase())) {
+                        repository.deleteBluetoothDevice(dev.address)
                     }
                 }
             }
@@ -892,13 +1023,6 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     fun renameBluetoothDevice(address: String, newName: String) {
         viewModelScope.launch {
             repository.renameBluetoothDevice(address, newName.trim())
-            withContext(Dispatchers.Main) {
-                com.example.notification.ParkingNotificationHelper.showSystemNotification(
-                    getApplication(),
-                    currentStrings.appName,
-                    String.format(currentStrings.notificationRenamedVehicle, newName.trim())
-                )
-            }
         }
     }
 
@@ -949,16 +1073,39 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             setPackage(getApplication<Application>().packageName)
             putExtra("simulated_name", deviceName)
             putExtra("simulated_address", deviceAddress)
-            _currentLocation.value?.let { loc ->
-                if (loc.latitude != 0.0 || loc.longitude != 0.0) {
-                    putExtra("simulated_lat", loc.latitude)
-                    putExtra("simulated_lng", loc.longitude)
-                    putExtra("simulated_alt", loc.altitude)
-                    putExtra("simulated_accuracy", loc.accuracy)
-                }
+            val currentActive = activeSpot.value
+            val loc = _currentLocation.value ?: LocationHelper.lastKnownLocation
+            if (loc != null && (loc.latitude != 0.0 || loc.longitude != 0.0)) {
+                // If an active parking spot is already saved at these coordinates, add a realistic movement offset (~200m)
+                // so the new second BT disconnect is correctly recorded as a new parking destination
+                val isSameAsActive = currentActive != null &&
+                        kotlin.math.abs(currentActive.latitude - loc.latitude) < 0.0001 &&
+                        kotlin.math.abs(currentActive.longitude - loc.longitude) < 0.0001
+                val lat = if (isSameAsActive) loc.latitude + 0.002 else loc.latitude
+                val lng = if (isSameAsActive) loc.longitude + 0.002 else loc.longitude
+                putExtra("simulated_lat", lat)
+                putExtra("simulated_lng", lng)
+                putExtra("simulated_alt", loc.altitude)
+                putExtra("simulated_accuracy", loc.accuracy)
+            } else if (currentActive != null) {
+                putExtra("simulated_lat", currentActive.latitude + 0.002)
+                putExtra("simulated_lng", currentActive.longitude + 0.002)
+            } else {
+                putExtra("simulated_lat", 37.4220)
+                putExtra("simulated_lng", -122.0841)
             }
         }
         getApplication<Application>().sendBroadcast(intent)
+    }
+
+    fun testBluetoothParkingAutoSave() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val monitored = repository.getSelectedCarDevice()
+                ?: repository.getMonitoredDevicesDirect().firstOrNull()
+            val targetName = monitored?.name ?: "Bluetooth Car (Test)"
+            val targetAddress = monitored?.address ?: "00:11:22:33:44:55"
+            simulateBluetoothDisconnect(targetName, targetAddress)
+        }
     }
 
     fun openGoogleMapsNavigation(context: Context, spot: ParkingSpot? = activeSpot.value) {
@@ -1012,15 +1159,20 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun shareParkingLocation(context: Context, spot: ParkingSpot? = null) {
+    fun shareParkingLocation(context: Context, spot: ParkingSpot? = null, linkOnly: Boolean = false) {
         val targetSpot = spot ?: activeSpot.value ?: allSpots.value.firstOrNull()
         if (targetSpot != null) {
-            val shareText = buildString {
-                append("📍 ${targetSpot.spotName}\n")
-                if (targetSpot.address.isNotBlank()) append("${targetSpot.address}\n")
-                if (targetSpot.floorLevel.isNotBlank()) append("Floor/Level: ${targetSpot.floorLevel}\n")
-                if (targetSpot.note.isNotBlank()) append("Notes: ${targetSpot.note}\n")
-                append("https://maps.google.com/?q=${targetSpot.latitude},${targetSpot.longitude}")
+            val mapsUrl = "https://maps.google.com/?q=${targetSpot.latitude},${targetSpot.longitude}"
+            val shareText = if (linkOnly) {
+                mapsUrl
+            } else {
+                buildString {
+                    append("📍 ${targetSpot.spotName}\n")
+                    if (targetSpot.address.isNotBlank()) append("${targetSpot.address}\n")
+                    if (targetSpot.floorLevel.isNotBlank()) append("Floor/Level: ${targetSpot.floorLevel}\n")
+                    if (targetSpot.note.isNotBlank()) append("Notes: ${targetSpot.note}\n")
+                    append(mapsUrl)
+                }
             }
 
             val sendIntent = Intent(Intent.ACTION_SEND).apply {
@@ -1105,6 +1257,11 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun setBtDisconnectTestEnabled(enabled: Boolean) {
+        _isBtDisconnectTestEnabled.value = enabled
+        prefs.edit().putBoolean("bt_disconnect_test_enabled", enabled).apply()
+    }
+
     fun setDevHapticDiagnostics(enabled: Boolean) {
         _isDevHapticDiagnostics.value = enabled
         prefs.edit().putBoolean("dev_haptic_diag", enabled).apply()
@@ -1127,10 +1284,183 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun setDevGeofenceAfterBtEnabled(enabled: Boolean) {
+        _isDevGeofenceAfterBtEnabled.value = enabled
+        autoParkPrefs.edit().putBoolean(com.example.geofence.GeofenceManager.KEY_DEV_ALLOW_GEOFENCE_AFTER_BT, enabled).apply()
+    }
+
     fun setDevTextWeight(weight: Int) {
         val clamped = weight.coerceIn(100, 900)
         _devTextWeight.value = clamped
         prefs.edit().putInt("dev_text_weight", clamped).apply()
+    }
+
+    fun setDevSimpleScrollEnabled(enabled: Boolean) {
+        _isDevSimpleScrollEnabled.value = enabled
+        prefs.edit().putBoolean("dev_simple_scroll_enabled", enabled).apply()
+    }
+
+    fun setDevFunWalkAwayIcon(enabled: Boolean) {
+        _isDevFunWalkAwayIcon.value = enabled
+        prefs.edit().putBoolean("dev_fun_walk_away_icon", enabled).apply()
+    }
+
+    fun setDevCustomFarAwayCoordsEnabled(enabled: Boolean) {
+        _isCustomFarAwayCoordsEnabled.value = enabled
+        prefs.edit().putBoolean("dev_custom_far_away_coords_enabled", enabled).apply()
+    }
+
+    fun setCustomFarAwayCoordsInput(input: String) {
+        _customFarAwayCoordsInput.value = input
+        prefs.edit().putString("dev_custom_far_away_coords_input", input).apply()
+    }
+
+    fun applyCustomFarAwayCoordinates(
+        coordsText: String,
+        startNavigation: Boolean = false,
+        onResult: ((Boolean, String) -> Unit)? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val parsed = CoordinateParser.parseSuspend(coordsText)
+            if (parsed == null) {
+                withContext(Dispatchers.Main) {
+                    onResult?.invoke(false, "Invalid coordinates format. Use 'lat, lng' or Google Maps link.")
+                }
+                return@launch
+            }
+
+            val address = LocationHelper.getAddressFromCoordinates(
+                getApplication(),
+                parsed.latitude,
+                parsed.longitude
+            )
+            val spotName = when {
+                !parsed.label.isNullOrBlank() -> parsed.label.trim()
+                !address.isNullOrBlank() && !address.contains("Unknown", ignoreCase = true) && !address.contains("Unable", ignoreCase = true) -> address.trim()
+                else -> "Custom Far Away Spot"
+            }
+
+            val spot = ParkingSpot(
+                latitude = parsed.latitude,
+                longitude = parsed.longitude,
+                altitude = 0.0,
+                accuracyMeters = 5.0f,
+                address = address,
+                spotName = spotName,
+                floorLevel = "Ground Level",
+                note = "Dev Custom Coordinates",
+                timestamp = System.currentTimeMillis(),
+                isAutoSaved = false,
+                bluetoothDeviceAddress = "DEV_CUSTOM_FAR_AWAY",
+                bluetoothDeviceName = "Custom Coordinates",
+                isActive = true
+            )
+
+            val id = repository.saveNewParkingSpot(spot)
+            val saved = spot.copy(id = id)
+
+            _currentAddress.value = address
+
+            withContext(Dispatchers.Main) {
+                if (startNavigation) {
+                    selectTab(AppTab.COMPASS_RADAR)
+                    startCompass()
+                }
+
+                ParkingNotificationHelper.showCarParkedNotification(getApplication(), saved)
+                com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                    getApplication(),
+                    currentStrings.appName,
+                    "Saved parking location: $spotName"
+                )
+                onResult?.invoke(
+                    true,
+                    "Parking spot saved: $spotName (${String.format(java.util.Locale.US, "%.4f, %.4f", parsed.latitude, parsed.longitude)})"
+                )
+            }
+        }
+    }
+
+    fun importSharedCoordinates(
+        rawTextOrUri: String,
+        onComplete: ((Boolean) -> Unit)? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val isLikelyUrl = rawTextOrUri.contains("http://", ignoreCase = true) || rawTextOrUri.contains("https://", ignoreCase = true)
+            if (isLikelyUrl) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        getApplication(),
+                        "Resolving Google Maps location...",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+
+            val parsed = CoordinateParser.parseSuspend(rawTextOrUri)
+            if (parsed == null) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        getApplication(),
+                        "Could not find valid coordinates in shared content",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    onComplete?.invoke(false)
+                }
+                return@launch
+            }
+
+            val address = LocationHelper.getAddressFromCoordinates(
+                getApplication(),
+                parsed.latitude,
+                parsed.longitude
+            )
+            val spotName = when {
+                !parsed.label.isNullOrBlank() -> parsed.label.trim()
+                !address.isNullOrBlank() && !address.contains("Unknown", ignoreCase = true) && !address.contains("Unable", ignoreCase = true) -> address.trim()
+                else -> "Shared Parking Spot"
+            }
+
+            val spot = ParkingSpot(
+                latitude = parsed.latitude,
+                longitude = parsed.longitude,
+                altitude = 0.0,
+                accuracyMeters = 5.0f,
+                address = address,
+                spotName = spotName,
+                floorLevel = "Ground Level",
+                note = "Imported from Google Maps",
+                timestamp = System.currentTimeMillis(),
+                isAutoSaved = false,
+                bluetoothDeviceName = "Shared Location",
+                isActive = true
+            )
+
+            val id = repository.saveNewParkingSpot(spot)
+            val saved = spot.copy(id = id)
+
+            _currentAddress.value = address
+
+            withContext(Dispatchers.Main) {
+                // Automatically start navigation and open the Waypoint tab
+                selectTab(AppTab.COMPASS_RADAR)
+                startCompass()
+
+                ParkingNotificationHelper.showCarParkedNotification(getApplication(), saved)
+                com.example.notification.ParkingNotificationHelper.showSystemNotification(
+                    getApplication(),
+                    currentStrings.appName,
+                    "Navigating to shared spot: $spotName"
+                )
+                Toast.makeText(
+                    getApplication(),
+                    "Spot saved: $spotName! Navigating via Waypoint radar...",
+                    Toast.LENGTH_LONG
+                ).show()
+
+                onComplete?.invoke(true)
+            }
+        }
     }
 
     fun setGeofenceAutoParkEnabled(enabled: Boolean) {
@@ -1139,19 +1469,18 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         autoParkPrefs.edit().putBoolean(com.example.geofence.GeofenceManager.KEY_GEOFENCE_ENABLED, enabled).apply()
         if (enabled) {
             com.example.geofence.GeofenceManager.startGeofenceWalkingAutoPark(getApplication())
-            val loc = _currentLocation.value ?: activeSpot.value?.let {
-                Location("car_spot").apply {
-                    latitude = it.latitude
-                    longitude = it.longitude
+            viewModelScope.launch(Dispatchers.IO) {
+                // If there is already an active parking spot, arm the perimeter around it
+                activeSpot.value?.let { spot ->
+                    if (spot.latitude != 0.0 || spot.longitude != 0.0) {
+                        com.example.geofence.GeofenceManager.registerCarPerimeterGeofence(
+                            getApplication(),
+                            spot.latitude,
+                            spot.longitude,
+                            com.example.geofence.GeofenceManager.DEFAULT_PERIMETER_RADIUS_METERS
+                        )
+                    }
                 }
-            }
-            if (loc != null && (loc.latitude != 0.0 || loc.longitude != 0.0)) {
-                com.example.geofence.GeofenceManager.registerCarPerimeterGeofence(
-                    getApplication(),
-                    loc.latitude,
-                    loc.longitude,
-                    com.example.geofence.GeofenceManager.DEFAULT_PERIMETER_RADIUS_METERS
-                )
             }
         } else {
             com.example.geofence.GeofenceManager.stopGeofenceWalkingAutoPark(getApplication())
@@ -1159,15 +1488,17 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun simulateGeofenceExit() {
-        val loc = _currentLocation.value ?: activeSpot.value?.let {
-            Location("car_spot").apply {
-                latitude = it.latitude
-                longitude = it.longitude
-            }
+        viewModelScope.launch(Dispatchers.IO) {
+            val loc = _currentLocation.value ?: activeSpot.value?.let {
+                Location("car_spot").apply {
+                    latitude = it.latitude
+                    longitude = it.longitude
+                }
+            } ?: LocationHelper.getCurrentLocation(getApplication())
+            val lat = if (loc != null && loc.latitude != 0.0) loc.latitude else 37.4220
+            val lng = if (loc != null && loc.longitude != 0.0) loc.longitude else -122.0841
+            com.example.geofence.GeofenceManager.simulateGeofenceExit(getApplication(), lat, lng)
         }
-        val lat = if (loc != null && loc.latitude != 0.0) loc.latitude else 37.4220
-        val lng = if (loc != null && loc.longitude != 0.0) loc.longitude else -122.0841
-        com.example.geofence.GeofenceManager.simulateGeofenceExit(getApplication(), lat, lng)
     }
 
     fun startBtProximityFinder(device: BluetoothCarDevice): Boolean {
@@ -1187,6 +1518,7 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun stopBtProximityFinder() {
+        prefs.edit().remove("max_dist_bt_proximity").apply()
         bluetoothProximityManager.stopProximityFinder()
     }
 
@@ -1549,7 +1881,39 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun downloadAndInstallUpdate(context: Context, downloadUrl: String) {
+        if (com.example.util.WhatsNewManager.hasMessageChanged(context)) {
+            _whatsNewMessage.value = com.example.util.WhatsNewManager.getActiveMessage(context)
+            _showWhatsNew.value = true
+        }
         com.example.util.UpdateManager.startDownload(context, downloadUrl, _appLanguage.value)
+    }
+
+    fun showWhatsNewWindow(force: Boolean = false) {
+        _whatsNewMessage.value = com.example.util.WhatsNewManager.getActiveMessage(getApplication())
+        _showWhatsNew.value = true
+    }
+
+    fun dismissWhatsNewWindow() {
+        _showWhatsNew.value = false
+        com.example.util.WhatsNewManager.markMessageSeen(getApplication(), _whatsNewMessage.value)
+    }
+
+    fun showBackgroundAutoSaveSetupSheet() {
+        _showBackgroundAutoSaveSetup.value = true
+    }
+
+    fun dismissBackgroundAutoSaveSetupSheet() {
+        _showBackgroundAutoSaveSetup.value = false
+    }
+
+    fun setDeveloperWhatsNewMessage(newMsg: String) {
+        _whatsNewMessage.value = newMsg
+        com.example.util.WhatsNewManager.setDeveloperMessage(getApplication(), newMsg)
+    }
+
+    fun resetDeveloperWhatsNewMessage() {
+        com.example.util.WhatsNewManager.resetToDefaultMessage(getApplication())
+        _whatsNewMessage.value = com.example.util.WhatsNewManager.CURRENT_MESSAGE
     }
 
     override fun onCleared() {
@@ -1566,5 +1930,6 @@ data class NavigationTelemetry(
     val targetBearing: Float, // Target bearing relative to true North
     val relativeArrowAngle: Float, // Needle rotation relative to device heading (0 = straight ahead)
     val altitudeDifference: Double, // In meters (for floor estimation)
-    val hasActiveTarget: Boolean
+    val hasActiveTarget: Boolean,
+    val distanceCoveredProgress: Float = 0f
 )

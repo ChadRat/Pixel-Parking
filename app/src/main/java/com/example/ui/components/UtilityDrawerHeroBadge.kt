@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +32,7 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -59,28 +61,53 @@ fun DrawScope.drawExactStopwatchClock(
     radius: Float = 19f,
     needleRotationDegrees: Float = 0f,
     minuteHandRotationDegrees: Float = needleRotationDegrees * 12f,
-    isRedStopped: Boolean = false
+    isRedStopped: Boolean = false,
+    colorScheme: ColorScheme? = null
 ) {
     val cx = center.x
     val cy = center.y
 
-    // Color palettes matching reference screenshot
+    // Color palettes: follow app's MaterialTheme when provided, red if stopped, or default blue
     val sidePusherGradient = if (isRedStopped) {
         listOf(Color(0xFFFF8A80), Color(0xFFEA4335), Color(0xFFD93025))
+    } else if (colorScheme != null) {
+        listOf(
+            colorScheme.secondary.copy(alpha = 0.85f),
+            colorScheme.secondary,
+            colorScheme.primary
+        )
     } else {
         listOf(Color(0xFF5CA4FC), Color(0xFF388DF8), Color(0xFF2676E8))
     }
 
-    val neckColor = if (isRedStopped) Color(0xFFB71C1C) else Color(0xFF274DE0)
+    val neckColor = if (isRedStopped) {
+        Color(0xFFB71C1C)
+    } else if (colorScheme != null) {
+        colorScheme.secondary
+    } else {
+        Color(0xFF274DE0)
+    }
 
     val topBtnGradient = if (isRedStopped) {
         listOf(Color(0xFFEF5350), Color(0xFFD32F2F), Color(0xFFB71C1C))
+    } else if (colorScheme != null) {
+        listOf(
+            colorScheme.primaryContainer,
+            colorScheme.primary,
+            colorScheme.secondary
+        )
     } else {
         listOf(Color(0xFF3B67F6), Color(0xFF2850E2), Color(0xFF1E3FD0))
     }
 
     val casingGradient = if (isRedStopped) {
         listOf(Color(0xFFEF5350), Color(0xFFE53935), Color(0xFFC62828))
+    } else if (colorScheme != null) {
+        listOf(
+            colorScheme.primary.copy(alpha = 0.88f),
+            colorScheme.primary,
+            colorScheme.secondary
+        )
     } else {
         listOf(Color(0xFF3E70F8), Color(0xFF3262F0), Color(0xFF254FE0))
     }
@@ -91,6 +118,12 @@ fun DrawScope.drawExactStopwatchClock(
             Color(0xFFE53935),
             Color(0xFFB71C1C)
         )
+    } else if (colorScheme != null) {
+        listOf(
+            colorScheme.primaryContainer.copy(alpha = 0.90f),
+            colorScheme.primaryContainer,
+            colorScheme.primary.copy(alpha = 0.70f)
+        )
     } else {
         listOf(
             Color(0xFF7B8CF8),
@@ -99,7 +132,13 @@ fun DrawScope.drawExactStopwatchClock(
         )
     }
 
-    val handColor = if (isRedStopped) Color(0xFF4A0007) else Color(0xFF142054)
+    val handColor = if (isRedStopped) {
+        Color(0xFF4A0007)
+    } else if (colorScheme != null) {
+        colorScheme.onPrimaryContainer
+    } else {
+        Color(0xFF142054)
+    }
 
     // 1. Minutes Tab / Pusher (positioned at the 10th minute: 60° from 12 o'clock)
     val minutesTabAngle = 60f
@@ -378,11 +417,14 @@ private class IndependentBadgeSpinner(
 fun UtilityDrawerHeroBadge(
     modifier: Modifier = Modifier.size(width = 250.dp, height = 180.dp)
 ) {
-    val colorDresser = Color(0xFF363B4E)
-    val colorDivider = Color(0xFF7B8198)
-    val colorKnob = Color(0xFFCDD1F8)
-    val colorBadgeCloud = Color(0xFFCDD1F8)
-    val colorBadgeIcon = Color(0xFF30354E)
+    val colorScheme = MaterialTheme.colorScheme
+    val isDark = colorScheme.surface.luminance() < 0.5f
+
+    val colorDresser = if (isDark) colorScheme.primaryContainer else colorScheme.primary
+    val colorDivider = if (isDark) colorScheme.onPrimaryContainer.copy(alpha = 0.35f) else colorScheme.onPrimary.copy(alpha = 0.4f)
+    val colorKnob = if (isDark) colorScheme.primary else colorScheme.primaryContainer
+    val colorBadgeCloud = if (isDark) colorScheme.primary else colorScheme.primaryContainer
+    val colorBadgeIcon = if (isDark) colorScheme.onPrimary else colorScheme.onPrimaryContainer
 
     // Animated smooth rotation values:
     // Surrounding shape badges rotate a few turns in one direction, then smoothly reverse and rotate a few turns in the other direction.
@@ -520,7 +562,7 @@ fun UtilityDrawerHeroBadge(
             )
         }
 
-        // 4. Icon 1: Compact Blue Stopwatch Clock Sitting Directly On Top of Cabinet (Starting at 10:10, slowly spinning)
+        // 4. Icon 1: Compact Stopwatch Clock Sitting Directly On Top of Cabinet (Starting at 10:10, slowly spinning)
         val clockRadius = dresserW * 0.130f
         val clockCenter = Offset(
             x = dresserLeft + dresserW * 0.50f,
@@ -531,7 +573,8 @@ fun UtilityDrawerHeroBadge(
             radius = clockRadius,
             needleRotationDegrees = clockHourSpin,
             minuteHandRotationDegrees = clockMinuteSpin,
-            isRedStopped = false
+            isRedStopped = false,
+            colorScheme = null
         )
 
         // 5. Surrounding Shape Icons: Outer cloud shapes spin slowly while inner icons remain stationary & fixed
@@ -550,41 +593,50 @@ fun UtilityDrawerHeroBadge(
             val path1 = createKeyBadgePath(badge1Radius)
             drawPath(path1, color = colorBadgeCloud)
         }
-        // Inner Key icon remains stationary and fixed in normal horizontal upright position
+        // Inner Key Icon - stationary, minimal, and horizontally oriented inside shape
         withTransform({
-            translate(badge1Center.x, badge1Center.y)
-            val iconScale = badge1Radius * 0.052f
+            translate(badge1Center.x - badge1Radius * 0.02f, badge1Center.y)
+            val iconScale = badge1Radius * 0.076f
             scale(iconScale, iconScale, Offset.Zero)
         }) {
-            // Key bow (circular ring)
+            // Sleek minimal key silhouette (horizontal orientation)
+            val keyPath = Path().apply {
+                // Top edge of horizontal shaft
+                moveTo(-0.16f, -1.05f)
+                lineTo(7.5f, -1.05f)
+                // Rounded tip
+                quadraticTo(7.9f, -1.05f, 7.9f, -0.6f)
+                lineTo(7.9f, 2.0f)
+                quadraticTo(7.9f, 2.3f, 7.5f, 2.3f)
+                // Tooth 2 (tip tooth)
+                lineTo(6.4f, 2.3f)
+                lineTo(6.4f, 1.05f)
+                // Gap
+                lineTo(5.2f, 1.05f)
+                // Tooth 1
+                lineTo(5.2f, 2.9f)
+                quadraticTo(5.2f, 3.2f, 4.8f, 3.2f)
+                lineTo(4.0f, 3.2f)
+                quadraticTo(3.6f, 3.2f, 3.6f, 2.9f)
+                lineTo(3.6f, 1.05f)
+                // Bottom edge of shaft to head
+                lineTo(-0.16f, 1.05f)
+                // Circular head bow (center at -3.6f, 0f, radius 3.6f)
+                arcTo(
+                    rect = Rect(left = -7.2f, top = -3.6f, right = 0.0f, bottom = 3.6f),
+                    startAngleDegrees = 17f,
+                    sweepAngleDegrees = 326f,
+                    forceMoveTo = false
+                )
+                close()
+            }
+            drawPath(keyPath, color = colorBadgeIcon)
+
+            // Minimal inner key head hole cutout
             drawCircle(
-                color = colorBadgeIcon,
-                radius = 4.8f,
-                center = Offset(-5.2f, 0f),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.4f)
-            )
-            // Key shaft
-            drawLine(
-                color = colorBadgeIcon,
-                start = Offset(-0.4f, 0f),
-                end = Offset(8.8f, 0f),
-                strokeWidth = 2.4f,
-                cap = StrokeCap.Round
-            )
-            // Teeth
-            drawLine(
-                color = colorBadgeIcon,
-                start = Offset(4.8f, 0f),
-                end = Offset(4.8f, 4.0f),
-                strokeWidth = 2.2f,
-                cap = StrokeCap.Round
-            )
-            drawLine(
-                color = colorBadgeIcon,
-                start = Offset(7.8f, 0f),
-                end = Offset(7.8f, 3.4f),
-                strokeWidth = 2.2f,
-                cap = StrokeCap.Round
+                color = colorBadgeCloud,
+                radius = 1.55f,
+                center = Offset(-3.6f, 0f)
             )
         }
 

@@ -70,16 +70,46 @@
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
             </intent-filter>
+            <!-- Open shared coordinates via Android Share Sheet -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="text/*" />
+            </intent-filter>
+            <!-- Open coordinates via geo: URI -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="geo" />
+            </intent-filter>
+            <!-- Open coordinates via Google Maps web and short links -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="maps.google.com" />
+                <data android:scheme="https" android:host="www.google.com" android:pathPrefix="/maps" />
+                <data android:scheme="https" android:host="google.com" android:pathPrefix="/maps" />
+                <data android:scheme="https" android:host="maps.app.goo.gl" />
+                <data android:scheme="https" android:host="goo.gl" android:pathPrefix="/maps" />
+                <data android:scheme="http" android:host="maps.google.com" />
+                <data android:scheme="http" android:host="www.google.com" android:pathPrefix="/maps" />
+                <data android:scheme="http" android:host="google.com" android:pathPrefix="/maps" />
+                <data android:scheme="http" android:host="maps.app.goo.gl" />
+                <data android:scheme="http" android:host="goo.gl" android:pathPrefix="/maps" />
+            </intent-filter>
         </activity>
 
         <receiver
             android:name=".receiver.BluetoothDisconnectReceiver"
             android:exported="true"
             android:enabled="true">
-            <intent-filter>
+            <intent-filter android:priority="999">
                 <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
-                <action android:name="android.bluetooth.device.action.ACL_DISCONNECT_REQUESTED" />
                 <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.BOND_STATE_CHANGED" />
                 <action android:name="android.bluetooth.adapter.action.STATE_CHANGED" />
                 <action android:name="android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED" />
                 <action android:name="android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" />
@@ -100,6 +130,7 @@
                 <action android:name="com.example.autopark.ACTION_GEOFENCE_TRANSITION" />
                 <action android:name="com.example.autopark.ACTION_SIMULATE_GEOFENCE_EXIT" />
                 <action android:name="com.example.autopark.ACTION_ACTIVITY_TRANSITION" />
+                <action android:name="com.example.autopark.ACTION_LOCATION_UPDATE" />
             </intent-filter>
         </receiver>
 
@@ -109,10 +140,17 @@
             android:foregroundServiceType="location"
             android:exported="false" />
 
+        <!-- Foreground Service for background Bluetooth disconnect location auto-saving -->
+        <service
+            android:name=".service.AutoParkLocationService"
+            android:foregroundServiceType="location"
+            android:stopWithTask="false"
+            android:exported="false" />
+
         <!-- Intelligent Adaptive Haptic Service for Waypoint Navigation -->
         <service
             android:name=".service.WaypointHapticService"
-            android:foregroundServiceType="connectedDevice|location"
+            android:foregroundServiceType="location"
             android:exported="false" />
 
         <!-- Wear OS DataLayer Communication Bridge Listener -->
@@ -136,6 +174,10 @@
                 <data
                     android:host="*"
                     android:pathPrefix="/mark_found"
+                    android:scheme="wear" />
+                <data
+                    android:host="*"
+                    android:pathPrefix="/restore_latest_spot"
                     android:scheme="wear" />
             </intent-filter>
         </service>

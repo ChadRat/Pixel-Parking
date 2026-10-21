@@ -1,0 +1,6 @@
+{
+  "summary": "Implementation plan to resolve the Bluetooth disconnect auto-save failure when the app is closed on Android 12+ (Google Pixel and stock Android). Introduces a persistent foreground monitor service, eliminates background foreground-service start restrictions, and implements a two-stage instant-save plus background GPS refinement pipeline.",
+  "updatedAt": "2026-10-16T13:55:52.171453829Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

@@ -34,7 +34,11 @@ object BluetoothDeviceHelper {
 
             bonded?.map { device ->
                 val type = inferDeviceType(device)
-                val devName = device.name ?: "Unknown Device (${device.address.takeLast(5)})"
+                val devName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try { device.alias?.ifBlank { null } } catch (_: Throwable) { null } ?: device.name ?: "Unknown Device (${device.address.takeLast(5)})"
+                } else {
+                    device.name ?: "Unknown Device (${device.address.takeLast(5)})"
+                }
                 BluetoothCarDevice(
                     address = device.address,
                     name = devName,

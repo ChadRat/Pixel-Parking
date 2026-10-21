@@ -115,7 +115,8 @@ class WearDataLayerBridge private constructor(private val context: Context) {
         distanceMeters: Float,
         targetBearing: Float,
         relativeArrowAngle: Float,
-        isAligned: Boolean
+        isAligned: Boolean,
+        distanceCoveredProgress: Float = 0f
     ) {
         if (!isWearApiAvailable.get()) return
 
@@ -126,7 +127,7 @@ class WearDataLayerBridge private constructor(private val context: Context) {
                 val nodes = nodeClient.connectedNodes.await()
                 if (nodes.isEmpty()) return@launch
 
-                val payload = "$distanceMeters,$targetBearing,$relativeArrowAngle,${if (isAligned) 1 else 0}".toByteArray(Charsets.UTF_8)
+                val payload = "$distanceMeters,$targetBearing,$relativeArrowAngle,${if (isAligned) 1 else 0},$distanceCoveredProgress".toByteArray(Charsets.UTF_8)
                 nodes.forEach { node ->
                     messageClient.sendMessage(node.id, PATH_TELEMETRY, payload)
                 }

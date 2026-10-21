@@ -118,8 +118,10 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import com.example.receiver.ParkingAlarmDismissReceiver
 import com.example.ui.components.AnimatedNavIcon
+import com.example.ui.components.BackgroundAutoSaveSetupSheet
 import com.example.ui.components.ParkingAlarmAlertDialog
 import com.example.ui.components.ParkingAlarmNotificationBanner
+import com.example.ui.components.WhatsNewSheet
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.i18n.getAppStrings
 import com.example.ui.screens.AboutScreen
@@ -155,9 +157,13 @@ class MainActivity : ComponentActivity() {
             val isDaytime by viewModel.isDaytime.collectAsStateWithLifecycle()
             val appLanguage by viewModel.appLanguage.collectAsStateWithLifecycle()
             val textWeight by viewModel.devTextWeight.collectAsStateWithLifecycle()
+            val isSimpleScrollEnabled by viewModel.isDevSimpleScrollEnabled.collectAsStateWithLifecycle()
             val strings = remember(appLanguage) { getAppStrings(appLanguage) }
 
-            CompositionLocalProvider(LocalAppStrings provides strings) {
+            CompositionLocalProvider(
+                LocalAppStrings provides strings,
+                com.example.util.LocalDisableSmoothScroll provides isSimpleScrollEnabled
+            ) {
                 MyApplicationTheme(
                     themeMode = themeMode,
                     dynamicColor = dynamicColor,
@@ -175,6 +181,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         configureHighRefreshRate()
+        if (com.example.service.AutoParkLocationService.isMonitoringEnabled(this)) {
+            com.example.service.AutoParkLocationService.startMonitoring(this)
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -191,6 +200,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleIntent(intent)
     }
 
@@ -224,13 +234,48 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        val action = intent?.getStringExtra("action")
+        if (intent == null) return
+        val action = intent.getStringExtra("action")
         if (action == "open_radar") {
             viewModel.selectTab(AppTab.COMPASS_RADAR)
         }
         
-        if (intent?.action == android.service.quicksettings.TileService.ACTION_QS_TILE_PREFERENCES) {
+        if (intent.action == android.service.quicksettings.TileService.ACTION_QS_TILE_PREFERENCES) {
             viewModel.handleQsTileLongPress()
+        }
+
+        // Handle shared coordinates via Android Share Sheet (ACTION_SEND)
+        if (intent.action == Intent.ACTION_SEND && !intent.getBooleanExtra("shared_coords_processed", false)) {
+            val clip = intent.clipData
+            val clipText = if (clip != null && clip.itemCount > 0) {
+                (0 until clip.itemCount).mapNotNull { i ->
+                    clip.getItemAt(i).text?.toString() ?: clip.getItemAt(i).uri?.toString()
+                }.joinToString("\n")
+            } else null
+
+            val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
+            val extraText = intent.getStringExtra(Intent.EXTRA_TEXT)
+                ?: intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+
+            val combined = listOfNotNull(subject, extraText, clipText, intent.dataString)
+                .joinToString("\n")
+                .trim()
+
+            if (combined.isNotBlank()) {
+                intent.putExtra("shared_coords_processed", true)
+                viewModel.importSharedCoordinates(combined)
+            }
+        }
+
+        // Handle opening coordinates/maps links directly (ACTION_VIEW)
+        if (intent.action == Intent.ACTION_VIEW && !intent.getBooleanExtra("shared_coords_processed", false)) {
+            val dataUri = intent.dataString ?: intent.data?.toString()
+            val extraText = intent.getStringExtra(Intent.EXTRA_TEXT)
+            val combined = listOfNotNull(dataUri, extraText).joinToString("\n").trim()
+            if (combined.isNotBlank()) {
+                intent.putExtra("shared_coords_processed", true)
+                viewModel.importSharedCoordinates(combined)
+            }
         }
     }
 }
@@ -246,6 +291,15 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
     val telemetry by viewModel.navigationTelemetry.collectAsStateWithLifecycle()
     val showTimerDialog by viewModel.showTimerDialog.collectAsStateWithLifecycle()
     val isAlarmActive by viewModel.isAlarmActive.collectAsStateWithLifecycle()
+    val showWhatsNew by viewModel.showWhatsNew.collectAsStateWithLifecycle()
+    val showBackgroundAutoSaveSetup by viewModel.showBackgroundAutoSaveSetup.collectAsStateWithLifecycle()
+    val whatsNewMessage by viewModel.whatsNewMessage.collectAsStateWithLifecycle()
+
+    val blurRadius by animateDpAsState(
+        targetValue = if (showWhatsNew || showBackgroundAutoSaveSetup) 20.dp else 0.dp,
+        animationSpec = tween(durationMillis = 300),
+        label = "screen_blur"
+    )
 
     val coroutineScope = rememberCoroutineScope()
     val mainTabs = remember {
@@ -285,9 +339,15 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
         }
     }
 
-    // Handle system device back button to return to previous page/tab instead of exiting app
-    BackHandler(enabled = viewModel.canNavigateBack || selectedTab != AppTab.DASHBOARD) {
-        viewModel.navigateBack()
+    // Handle system device back button for What's New window, background setup, or screen navigation
+    BackHandler(enabled = showWhatsNew || showBackgroundAutoSaveSetup || viewModel.canNavigateBack || selectedTab != AppTab.DASHBOARD) {
+        if (showWhatsNew) {
+            viewModel.dismissWhatsNewWindow()
+        } else if (showBackgroundAutoSaveSetup) {
+            viewModel.dismissBackgroundAutoSaveSetupSheet()
+        } else {
+            viewModel.navigateBack()
+        }
     }
 
     var isNavBarVisible by rememberSaveable { mutableStateOf(true) }
@@ -319,6 +379,7 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
         }
     }
 
+    var scrollAccumulator by remember { mutableStateOf(0f) }
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -327,13 +388,23 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
                     return Offset.Zero
                 }
                 val delta = available.y
-                // User scrolls downwards (content moves up, negative delta) -> retract downwards smoothly
-                if (delta < -18f && isNavBarVisible) {
-                    isNavBarVisible = false
-                }
-                // User scrolls upwards (content moves down, positive delta) -> reappear smoothly
-                else if (delta > 18f && !isNavBarVisible) {
-                    isNavBarVisible = true
+                // Accumulate scroll delta with hysteresis to avoid flickering and jitter during scrolling
+                if (delta < 0f) {
+                    // Scrolling downwards (content moves up)
+                    if (scrollAccumulator > 0f) scrollAccumulator = 0f
+                    scrollAccumulator += delta
+                    if (scrollAccumulator < -80f && isNavBarVisible) {
+                        isNavBarVisible = false
+                        scrollAccumulator = 0f
+                    }
+                } else if (delta > 0f) {
+                    // Scrolling upwards (content moves down)
+                    if (scrollAccumulator < 0f) scrollAccumulator = 0f
+                    scrollAccumulator += delta
+                    if (scrollAccumulator > 60f && !isNavBarVisible) {
+                        isNavBarVisible = true
+                        scrollAccumulator = 0f
+                    }
                 }
                 return Offset.Zero
             }
@@ -342,22 +413,22 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
 
     val pagerFlingBehavior = PagerDefaults.flingBehavior(
         state = pagerState,
-        snapPositionalThreshold = 0.50f,
+        snapPositionalThreshold = 0.30f,
         snapAnimationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow
+            dampingRatio = 0.88f,
+            stiffness = 450f
         )
     )
 
-    // Sync pager when selectedTab is changed programmatically
+    // Sync pager when selectedTab is changed programmatically with smooth animation
     LaunchedEffect(selectedTab) {
         val targetIndex = mainTabs.indexOf(selectedTab)
         if (targetIndex >= 0 && pagerState.currentPage != targetIndex) {
             pagerState.animateScrollToPage(
                 page = targetIndex,
                 animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
+                    dampingRatio = 0.88f,
+                    stiffness = 380f
                 )
             )
         }
@@ -384,6 +455,9 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
     ) {
         viewModel.refreshCurrentLocation()
         viewModel.syncSystemPairedDevices()
+        if (com.example.service.AutoParkLocationService.isMonitoringEnabled(context)) {
+            com.example.service.AutoParkLocationService.startMonitoring(context)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -391,6 +465,9 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            permissions.add(Manifest.permission.ACTIVITY_RECOGNITION)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -401,73 +478,60 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
         permissionLauncher.launch(permissions.toTypedArray())
     }
 
-    val backgroundBlur by animateDpAsState(
-        targetValue = if (selectedTab == AppTab.BLUETOOTH_AUTO || selectedTab == AppTab.ABOUT) 20.dp else 0.dp,
-        label = "bt_bg_blur"
-    )
-
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .nestedScroll(nestedScrollConnection)
+            .then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .then(
-                    if (backgroundBlur > 0.5.dp) Modifier.blur(backgroundBlur) else Modifier
-                )
+                .background(MaterialTheme.colorScheme.background)
+                .nestedScroll(nestedScrollConnection)
         ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                key = { mainTabs[it].name },
-                beyondViewportPageCount = 1,
-                flingBehavior = pagerFlingBehavior
-            ) { pageIndex ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            val pageOffset = (
-                                (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
-                            ).absoluteValue
-                            if (pageOffset > 0.005f) {
-                                val pageScale = (1f - 0.035f * pageOffset).coerceIn(0.93f, 1f)
-                                val pageAlpha = (1f - 0.35f * pageOffset).coerceIn(0.65f, 1f)
-                                scaleX = pageScale
-                                scaleY = pageScale
-                                alpha = pageAlpha
-                            } else {
-                                scaleX = 1f
-                                scaleY = 1f
-                                alpha = 1f
-                            }
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            key = { mainTabs[it].name },
+            beyondViewportPageCount = 0,
+            flingBehavior = pagerFlingBehavior
+        ) { pageIndex ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val pageOffset = (
+                            (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
+                        ).absoluteValue
+                        if (pageOffset > 0.005f) {
+                            alpha = (1f - 0.20f * pageOffset).coerceIn(0.80f, 1f)
+                        } else {
+                            alpha = 1f
                         }
-                ) {
-                    when (mainTabs[pageIndex]) {
-                        AppTab.DASHBOARD -> {
-                            HomeScreen(
-                                viewModel = viewModel,
-                                activeSpot = activeSpot,
-                                recentSpots = allSpots,
-                                telemetry = telemetry,
-                                onNavigateTab = { viewModel.selectTab(it) }
-                            )
-                        }
+                    }
+            ) {
+                when (mainTabs[pageIndex]) {
+                    AppTab.DASHBOARD -> {
+                        HomeScreen(
+                            viewModel = viewModel,
+                            activeSpot = activeSpot,
+                            recentSpots = allSpots,
+                            onNavigateTab = { viewModel.selectTab(it) }
+                        )
+                    }
 
-                        AppTab.COMPASS_RADAR -> {
-                            CompassRadarScreen(
-                                viewModel = viewModel,
-                                activeSpot = activeSpot,
-                                telemetry = telemetry,
-                                compassState = compassState,
-                                isNavBarVisible = isNavBarVisible,
-                                onBack = { viewModel.selectTab(AppTab.DASHBOARD) },
-                                onUserInteraction = { registerWaypointInteraction() }
-                            )
-                        }
+                    AppTab.COMPASS_RADAR -> {
+                        CompassRadarScreen(
+                            viewModel = viewModel,
+                            activeSpot = activeSpot,
+                            telemetry = telemetry,
+                            compassState = compassState,
+                            isNavBarVisible = isNavBarVisible,
+                            isTabSelected = (selectedTab == AppTab.COMPASS_RADAR),
+                            onBack = { viewModel.selectTab(AppTab.DASHBOARD) },
+                            onUserInteraction = { registerWaypointInteraction() }
+                        )
+                    }
 
                         AppTab.HISTORY -> {
                             HistoryScreen(
@@ -564,7 +628,21 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
             )
         }
     }
+
+    if (showWhatsNew) {
+        WhatsNewSheet(
+            message = whatsNewMessage,
+            onDismiss = { viewModel.dismissWhatsNewWindow() }
+        )
     }
+
+    if (showBackgroundAutoSaveSetup) {
+        BackgroundAutoSaveSetupSheet(
+            viewModel = viewModel,
+            onDismiss = { viewModel.dismissBackgroundAutoSaveSetupSheet() }
+        )
+    }
+}
 
 data class NavItem(
     val tab: AppTab,
@@ -575,30 +653,18 @@ data class NavItem(
 )
 
 /**
- * Realistic drop shadow for the floating navigation components.
- * - Hardware-accelerated Gaussian penumbra with zero rough, stepped, or sharp edges.
- * - Directionally cast downwards below the navigation bar with subtle, natural side penumbra.
- * - Layered ambient and spot occlusion for a noticeably darker, deeper, and grounded presence.
- * - Active in both light mode and dark mode.
+ * Clean hardware-accelerated drop shadow for the floating navigation components.
  */
 private fun Modifier.navBarRealisticShadow(
     isDark: Boolean,
-    elevation: Dp = 12.dp
-): Modifier = this
-    .shadow(
-        elevation = 5.dp,
-        shape = CircleShape,
-        spotColor = if (isDark) Color.Black else Color.Black.copy(alpha = 0.88f),
-        ambientColor = if (isDark) Color.Black.copy(alpha = 0.65f) else Color.Black.copy(alpha = 0.50f),
-        clip = false
-    )
-    .shadow(
-        elevation = elevation,
-        shape = CircleShape,
-        spotColor = if (isDark) Color.Black else Color.Black.copy(alpha = 0.95f),
-        ambientColor = if (isDark) Color.Black.copy(alpha = 0.70f) else Color.Black.copy(alpha = 0.55f),
-        clip = false
-    )
+    elevation: Dp = 10.dp
+): Modifier = this.shadow(
+    elevation = elevation,
+    shape = CircleShape,
+    spotColor = if (isDark) Color.Black else Color.Black.copy(alpha = 0.40f),
+    ambientColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.25f),
+    clip = false
+)
 
 @Composable
 fun PixelFloatingBottomNavBar(

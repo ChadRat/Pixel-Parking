@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -45,7 +46,6 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -79,7 +79,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.entity.ParkingSpot
+import com.example.data.entity.isBluetoothEntry
+import com.example.data.entity.isCustomFarAwayEntry
 import com.example.data.entity.isGeofenceEntry
+import com.example.ui.components.CustomFarAwayIcon
+import com.example.ui.components.GeofenceIcon
 import com.example.ui.i18n.LocalAppStrings
 import java.util.Locale
 
@@ -214,7 +218,7 @@ fun EditSpotDialog(
             // Dedicated Parking Timer Option with interactive Pill on the right side & clear instructions
             Surface(
                 shape = RoundedCornerShape(20.dp),
-                color = if (isTimerRunning) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = null,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -242,11 +246,10 @@ fun EditSpotDialog(
                             val isTimerStopped = viewModel?.timerIsStopped?.collectAsStateWithLifecycle()?.value ?: false
                             val iconBgColor = when {
                                 isTimerStopped -> Color(0xFFD93025)
-                                isTimerRunning -> MaterialTheme.colorScheme.primary
                                 else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
                             }
                             val iconTint = when {
-                                isTimerStopped || isTimerRunning -> Color.White
+                                isTimerStopped -> Color.White
                                 else -> MaterialTheme.colorScheme.primary
                             }
                             Box(
@@ -299,9 +302,9 @@ fun EditSpotDialog(
                         exit = shrinkVertically(animationSpec = tween(durationMillis = 280)) + fadeOut(animationSpec = tween(durationMillis = 200))
                     ) {
                         val instructions = if (strings.languageSection == "Γλώσσα") {
-                            "• 1ο πάτημα: Ρύθμιση ωρών (σύρετε πάνω/κάτω)\n• 2ο πάτημα: Ρύθμιση λεπτών (σύρετε πάνω/κάτω)\n• 3ο πάτημα: Έναρξη χρονομέτρου\n• Παρατεταμένο πάτημα (500ms): Διακοπή χρονομέτρου\n• Παρατεταμένο πάτημα (2s): Μηδενισμός (00:00)"
+                            "• 1ο πάτημα: Ρύθμιση ωρών (σύρετε πάνω/κάτω)\n• 2ο πάτημα: Ρύθμιση λεπτών (σύρετε πάνω/κάτω)\n• 3ο πάτημα: Έναρξη χρονομέτρου\n• Παρατεταμένο πάτημα (450ms): Διακοπή χρονομέτρου"
                         } else {
-                            "• Tap 1: Set hours (swipe up/down)\n• Tap 2: Set minutes (swipe up/down)\n• Tap 3: Start timer\n• Press & hold (500ms): Stop timer\n• Press & hold (2s): Reset (00:00)"
+                            "• Tap 1: Set hours (swipe up/down)\n• Tap 2: Set minutes (swipe up/down)\n• Tap 3: Start timer\n• Press & hold (450ms): Stop timer"
                         }
                         Text(
                             text = instructions,
@@ -390,7 +393,14 @@ fun EditSpotDialog(
                             modifier = Modifier.size(34.dp)
                         ) {
                             if (isRefreshingGps) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                SquigglyLoadingInline(
+                                    modifier = Modifier.size(24.dp, 16.dp),
+                                    width = 24.dp,
+                                    height = 16.dp,
+                                    waveLength = 16f,
+                                    amplitude = 4f,
+                                    strokeWidth = 2.5f
+                                )
                             } else {
                                 Icon(
                                     imageVector = Icons.Default.Refresh,
@@ -410,12 +420,34 @@ fun EditSpotDialog(
                 onValueChange = { spotName = it },
                 label = { Text(strings.spotNameOrVehicleLabel) },
                 leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.DirectionsCar,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    val isFarAway = initialSpot?.isCustomFarAwayEntry == true
+                    val isGeo = initialSpot?.isGeofenceEntry == true
+                    val isBt = initialSpot?.isBluetoothEntry == true
+                    if (isFarAway) {
+                        CustomFarAwayIcon(
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    } else if (isGeo) {
+                        GeofenceIcon(
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    } else if (isBt) {
+                        Icon(
+                            imageVector = Icons.Default.Bluetooth,
+                            contentDescription = "Bluetooth Saved Spot",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.DirectionsCar,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 },
                 singleLine = true,
                 shape = RoundedCornerShape(18.dp),

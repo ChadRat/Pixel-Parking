@@ -1,12 +1,15 @@
 package com.example.receiver
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothA2dp
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothHeadset
 import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.location.Location
 import android.os.Build
 import android.os.PowerManager
 import android.util.Log
@@ -26,7 +29,7 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "BluetoothReceiver"
-        private const val DEBOUNCE_WINDOW_MS = 25_000L // 25 seconds window for hardware disconnects
+        private const val DEBOUNCE_WINDOW_MS = 4_000L // Fast 4 seconds window for hardware disconnects
 
         private val processLock = Any()
 
@@ -34,14 +37,23 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
         private var isDisconnectProcessing: Boolean = false
 
         @Volatile
+        private var disconnectProcessingStartTime: Long = 0L
+
+        @Volatile
         private var lastDisconnectHandledTime: Long = 0L
 
         @Volatile
         private var lastSavedAddress: String? = null
 
+        fun resetProcessingState() {
+            synchronized(processLock) {
+                isDisconnectProcessing = false
+            }
+        }
+
         private val VEHICLE_KEYWORDS = listOf(
             "car", "auto", "vehicle", "infotainment", "handsfree", "hands-free",
-            "head unit", "stereo", "audio", "bt", "sync", "uconnect", "carplay",
+            "head unit", "sync", "uconnect", "carplay",
             "android auto", "toyota", "vw", "volkswagen", "bmw", "audi", "mercedes",
             "ford", "hyundai", "kia", "nissan", "honda", "tesla", "chevy", "chevrolet",
             "mazda", "subaru", "jeep", "dodge", "ram", "lexus", "volvo", "renault",
@@ -54,6 +66,36 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
             val lower = name.lowercase()
             return VEHICLE_KEYWORDS.any { lower.contains(it) }
         }
+
+        fun isProfileConnectionEvent(action: String?, profileState: Int = -1, adapterState: Int = -1): Boolean {
+            val isAclConnected = action == BluetoothDevice.ACTION_ACL_CONNECTED
+            val isAdapterConnConnected = action == BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED &&
+                    adapterState == BluetoothAdapter.STATE_CONNECTED
+            val isA2dpConnected = (action == BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED ||
+                    action == "android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED") &&
+                    profileState == BluetoothProfile.STATE_CONNECTED
+            val isHeadsetConnected = (action == BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED ||
+                    action == "android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED") &&
+                    profileState == BluetoothProfile.STATE_CONNECTED
+            return isAclConnected || isAdapterConnConnected || isA2dpConnected || isHeadsetConnected
+        }
+
+        fun isProfileDisconnectionEvent(action: String?, profileState: Int = -1, adapterState: Int = -1): Boolean {
+            val isAclDisconnect = action == BluetoothDevice.ACTION_ACL_DISCONNECTED
+            val isAdapterConnDisconnect = action == BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED &&
+                    adapterState == BluetoothAdapter.STATE_DISCONNECTED
+            val isA2dpDisconnect = (action == BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED ||
+                    action == "android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED") &&
+                    profileState == BluetoothProfile.STATE_DISCONNECTED
+            val isHeadsetDisconnect = (action == BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED ||
+                    action == "android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED") &&
+                    profileState == BluetoothProfile.STATE_DISCONNECTED
+            val isBtTurningOff = action == BluetoothAdapter.ACTION_STATE_CHANGED &&
+                    (adapterState == BluetoothAdapter.STATE_TURNING_OFF || adapterState == BluetoothAdapter.STATE_OFF)
+            val isSimulatedDisconnect = action == "com.example.autopark.ACTION_SIMULATE_DISCONNECT"
+            return isAclDisconnect || isAdapterConnDisconnect || isA2dpDisconnect ||
+                    isHeadsetDisconnect || isBtTurningOff || isSimulatedDisconnect
+        }
     }
 
     @SuppressLint("MissingPermission", "WakelockTimeout")
@@ -64,6 +106,7 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
         // 1. Handle system boot / update actions to warm up Application & services
         if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             Log.d(TAG, "Device booted / package replaced; app initialized.")
+            com.example.geofence.GeofenceManager.restoreOnStartup(context)
             return
         }
 
@@ -84,6 +127,7 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
             ?: try { device?.address } catch (_: Throwable) { null }
 
         val rawName: String? = intent.getStringExtra("simulated_name")
+            ?: intent.getStringExtra(BluetoothDevice.EXTRA_NAME)
             ?: try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     device?.alias ?: device?.name
@@ -109,15 +153,11 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
         }
 
         // 3. Classify event type
-        val isAclConnected = action == BluetoothDevice.ACTION_ACL_CONNECTED
-        val isAdapterConnConnected = action == BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED &&
-                intent.getIntExtra(BluetoothAdapter.EXTRA_CONNECTION_STATE, -1) == BluetoothAdapter.STATE_CONNECTED
-        val isA2dpConnected = action == "android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" &&
-                intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1) == BluetoothProfile.STATE_CONNECTED
-        val isHeadsetConnected = action == "android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED" &&
-                intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1) == BluetoothProfile.STATE_CONNECTED
+        val profileState = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1)
+        val adapterConnState = intent.getIntExtra(BluetoothAdapter.EXTRA_CONNECTION_STATE, -1)
+        val adapterState = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)
 
-        val isConnectedEvent = isAclConnected || isAdapterConnConnected || isA2dpConnected || isHeadsetConnected
+        val isConnectedEvent = isProfileConnectionEvent(action, profileState, adapterConnState)
 
         // 4. Handle connection events: refresh last-connected timestamp and register vehicle if new
         if (isConnectedEvent) {
@@ -139,17 +179,66 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                     if (matched != null) {
                         repository.updateBluetoothDevice(matched.copy(lastConnectedTimestamp = System.currentTimeMillis()))
                     } else if (!connAddress.isNullOrBlank()) {
-                        val effectiveName = connName ?: "Bluetooth Device"
-                        repository.registerBluetoothDevice(
-                            BluetoothCarDevice(
-                                address = connAddress,
-                                name = effectiveName,
-                                originalName = effectiveName,
-                                isMonitoredCar = false,
-                                lastConnectedTimestamp = System.currentTimeMillis()
-                            ),
-                            setAsPrimary = false
-                        )
+                        val isBonded = try {
+                            device?.bondState == BluetoothDevice.BOND_BONDED
+                        } catch (_: Throwable) {
+                            false
+                        }
+                        if (isBonded) {
+                            val effectiveName = connName ?: "Bluetooth Device"
+                            val isCar = hasVehicleKeywords(effectiveName) || repository.getMonitoredDevicesDirect().isEmpty()
+                            repository.registerBluetoothDevice(
+                                BluetoothCarDevice(
+                                    address = connAddress,
+                                    name = effectiveName,
+                                    originalName = effectiveName,
+                                    isMonitoredCar = isCar,
+                                    lastConnectedTimestamp = System.currentTimeMillis()
+                                ),
+                                setAsPrimary = isCar
+                            )
+                        }
+                    }
+
+                    // Warm up GPS & fused location providers while driving so location is primed when parking
+                    try {
+                        LocationHelper.warmUpLocation(context)
+                    } catch (_: Throwable) {}
+
+                    // If a navigation was running or an active spot exists for this car, mark it as found automatically upon connecting
+                    val activeSpot = repository.getActiveSpotDirect()
+                    if (activeSpot != null && activeSpot.isActive) {
+                        val isCarMatch = if (!connAddress.isNullOrBlank() && !activeSpot.bluetoothDeviceAddress.isNullOrBlank()) {
+                            activeSpot.bluetoothDeviceAddress.equals(connAddress, ignoreCase = true)
+                        } else if (!connName.isNullOrBlank() && !activeSpot.bluetoothDeviceName.isNullOrBlank()) {
+                            activeSpot.bluetoothDeviceName.equals(connName, ignoreCase = true)
+                        } else {
+                            matched?.isMonitoredCar == true || repository.getMonitoredDevicesDirect().any { it.address.equals(connAddress, ignoreCase = true) }
+                        }
+                        if (isCarMatch) {
+                            Log.d(TAG, "Car connected while active parking/navigation was present. Marking car as found.")
+                            repository.deactivateActiveSpot()
+                            try {
+                                com.example.service.ParkingRadarService.stop(context)
+                            } catch (_: Throwable) {}
+                            try {
+                                com.example.wear.WearDataLayerBridge.getInstance(context).syncParkingSpot(null)
+                            } catch (_: Throwable) {}
+                        }
+                    }
+
+                    val isCarOrMonitored = matched?.isMonitoredCar == true ||
+                            (connName != null && hasVehicleKeywords(connName)) ||
+                            repository.getMonitoredDevicesDirect().any { it.address.equals(connAddress, ignoreCase = true) } ||
+                            repository.getMonitoredDevicesDirect().isEmpty()
+
+                    if (isCarOrMonitored) {
+                        val activeCarName = matched?.name ?: connName ?: "Car Bluetooth"
+                        com.example.service.AutoParkLocationService.startWatching(context, activeCarName, connAddress)
+                    }
+
+                    if (matched?.isMonitoredCar == true) {
+                        com.example.geofence.GeofenceManager.clearGpsBuffer(context)
                     }
                 } catch (e: Throwable) {
                     Log.e(TAG, "Error updating connected device", e)
@@ -164,134 +253,186 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
         }
 
         // 5. Classify disconnect triggers
-        val isAclDisconnect = action == BluetoothDevice.ACTION_ACL_DISCONNECTED ||
-                action == BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED
-        val isAdapterConnDisconnect = action == BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED &&
-                intent.getIntExtra(BluetoothAdapter.EXTRA_CONNECTION_STATE, -1) == BluetoothAdapter.STATE_DISCONNECTED
-        val isA2dpDisconnect = action == "android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" &&
-                intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1) == BluetoothProfile.STATE_DISCONNECTED
-        val isHeadsetDisconnect = action == "android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED" &&
-                intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1) == BluetoothProfile.STATE_DISCONNECTED
-        val isBtTurningOff = action == BluetoothAdapter.ACTION_STATE_CHANGED &&
-                (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1) == BluetoothAdapter.STATE_TURNING_OFF ||
-                        intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1) == BluetoothAdapter.STATE_OFF)
         val isSimulatedDisconnect = action == "com.example.autopark.ACTION_SIMULATE_DISCONNECT"
+        val isBtTurningOff = action == BluetoothAdapter.ACTION_STATE_CHANGED &&
+                (adapterState == BluetoothAdapter.STATE_TURNING_OFF || adapterState == BluetoothAdapter.STATE_OFF)
 
-        val isDisconnectEvent = isAclDisconnect || isAdapterConnDisconnect || isA2dpDisconnect ||
-                isHeadsetDisconnect || isBtTurningOff || isSimulatedDisconnect
+        val isDisconnectEvent = isProfileDisconnectionEvent(
+            action = action,
+            profileState = profileState,
+            adapterState = if (action == BluetoothAdapter.ACTION_STATE_CHANGED) adapterState else adapterConnState
+        )
 
         if (!isDisconnectEvent) {
             safeReleaseWakeLock(wakeLock)
             return
         }
 
-        // Strict process synchronization: drops all concurrent or rapid duplicate broadcasts
-        // (e.g. simultaneous ACL + A2DP profiles, dual manifest/dynamic receiver registrations).
-        val entryTime = System.currentTimeMillis()
-        synchronized(processLock) {
-            if (!isSimulatedDisconnect) {
-                if (isDisconnectProcessing) {
-                    Log.d(TAG, "Dropping disconnect broadcast: another disconnect event is currently being processed")
-                    safeReleaseWakeLock(wakeLock)
-                    return
-                }
-                if ((entryTime - lastDisconnectHandledTime) < DEBOUNCE_WINDOW_MS) {
-                    Log.d(TAG, "Dropping duplicate disconnect broadcast received within debounce window ($DEBOUNCE_WINDOW_MS ms)")
-                    safeReleaseWakeLock(wakeLock)
-                    return
-                }
-                isDisconnectProcessing = true
-                lastDisconnectHandledTime = entryTime
-            } else {
-                lastDisconnectHandledTime = entryTime
-            }
-        }
-
-        // 6. Handle Disconnection Event
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
+            var acquiredProcessingLock = false
             try {
-                withTimeoutOrNull(25_000L) {
-                    val db = AppDatabase.getDatabase(context)
-                    val repository = com.example.data.repository.ParkingRepository(
-                        db.parkingSpotDao(),
-                        db.bluetoothCarDeviceDao()
-                    )
+                val db = AppDatabase.getDatabase(context)
+                val repository = com.example.data.repository.ParkingRepository(
+                    db.parkingSpotDao(),
+                    db.bluetoothCarDeviceDao()
+                )
 
-                    // Auto-sync bonded devices from system if DB is empty or missing this address
-                    val allDevicesDirect = repository.getAllDevicesDirect()
-                    if (allDevicesDirect.isEmpty() || (!rawAddress.isNullOrBlank() && allDevicesDirect.none { it.address.equals(rawAddress, ignoreCase = true) })) {
-                        try {
-                            val systemBonded = BluetoothDeviceHelper.getSystemBondedDevices(context)
-                            if (!systemBonded.isNullOrEmpty()) {
-                                systemBonded.forEach { sysDev ->
-                                    if (allDevicesDirect.none { it.address.equals(sysDev.address, ignoreCase = true) }) {
-                                        repository.registerBluetoothDevice(
-                                            sysDev.copy(isMonitoredCar = false),
-                                            setAsPrimary = false
-                                        )
-                                    }
-                                }
-                            }
-                        } catch (_: Throwable) {}
-                    }
-
-                    val allMonitored = repository.getMonitoredDevicesDirect()
-
-                    // If no vehicles are enabled in the Car Bluetooth menu, never save location
-                    if (!isSimulatedDisconnect && allMonitored.isEmpty()) {
-                        Log.d(TAG, "No vehicles are enabled in the Car Bluetooth menu. Ignoring disconnect: address=$rawAddress, name=$rawName")
-                        synchronized(processLock) {
-                            lastDisconnectHandledTime = 0L
+                // 6. Check explicitly selected (monitored) car devices from the BT car menu
+                var allMonitored = repository.getMonitoredDevicesDirect()
+                if (allMonitored.isEmpty() && !isSimulatedDisconnect) {
+                    val allDevices = repository.getAllDevicesDirect()
+                    val candidateCar = allDevices.firstOrNull { dev ->
+                        dev.deviceType == "Car" || hasVehicleKeywords(dev.name) || hasVehicleKeywords(dev.originalName)
+                    } ?: if (!rawAddress.isNullOrBlank() || !rawName.isNullOrBlank()) {
+                        repository.findMatchingDevice(rawAddress, rawName)?.takeIf {
+                            it.deviceType == "Car" || hasVehicleKeywords(it.name) || hasVehicleKeywords(it.originalName)
                         }
-                        return@withTimeoutOrNull
-                    }
+                    } else null
+                    ?: if (allDevices.size == 1) allDevices.first() else null
 
-                    var targetAddress: String? = rawAddress
-                    var targetName: String? = rawName
-
-                    val resolvedVehicle: BluetoothCarDevice? = if (isSimulatedDisconnect) {
-                        repository.findMatchingMonitoredDevice(targetAddress, targetName)
-                            ?: repository.findMatchingDevice(targetAddress, targetName)
-                            ?: allMonitored.firstOrNull()
-                    } else if (targetAddress.isNullOrBlank() && isBtTurningOff) {
-                        // Bluetooth was turned off globally without a specific device extra.
-                        // Only trigger if an enabled car was connected within the last 15 seconds.
-                        val now = System.currentTimeMillis()
-                        val recentlyConnected = allMonitored.filter { (now - it.lastConnectedTimestamp) in 0..15_000L }
-                        if (recentlyConnected.isNotEmpty()) {
-                            recentlyConnected.maxByOrNull { it.lastConnectedTimestamp }
-                        } else {
-                            Log.d(TAG, "Bluetooth turned off, but no enabled car was recently connected. Ignoring.")
-                            synchronized(processLock) {
-                                lastDisconnectHandledTime = 0L
-                            }
-                            return@withTimeoutOrNull
-                        }
-                    } else {
-                        // Strict filter: match ONLY against enabled devices from the Car Bluetooth menu
-                        repository.findMatchingMonitoredDevice(targetAddress, targetName)
-                    }
-
-                    // STRICT FILTER: If the disconnecting device is NOT on the enabled device list of the Car Bluetooth menu, IGNORE IT and DO NOT SAVE LOCATION
-                    if (resolvedVehicle == null) {
-                        Log.d(
-                            TAG,
-                            "Ignored disconnect from unmonitored Bluetooth device: address=$rawAddress, name=$rawName. Not on the enabled device list of the Car Bluetooth menu."
+                    if (candidateCar != null) {
+                        Log.d(TAG, "No vehicle was explicitly toggled, auto-monitoring '${candidateCar.name}' for disconnect auto-park.")
+                        repository.setDeviceMonitored(candidateCar.address, true)
+                        allMonitored = listOf(candidateCar.copy(isMonitoredCar = true))
+                    } else if (hasVehicleKeywords(rawName)) {
+                        val newCar = BluetoothCarDevice(
+                            address = rawAddress ?: "00:00:00:00:00:00",
+                            name = rawName ?: "Car Bluetooth",
+                            originalName = rawName ?: "Car Bluetooth",
+                            deviceType = "Car",
+                            isMonitoredCar = true,
+                            lastConnectedTimestamp = System.currentTimeMillis()
                         )
-                        synchronized(processLock) {
-                            lastDisconnectHandledTime = 0L
-                        }
-                        return@withTimeoutOrNull
+                        repository.registerBluetoothDevice(newCar, setAsPrimary = true)
+                        allMonitored = listOf(newCar)
+                    } else {
+                        val fallbackName = rawName ?: "Car Bluetooth"
+                        val fallbackAddress = rawAddress ?: "00:00:00:00:00:00"
+                        Log.d(TAG, "No car device explicitly selected, auto-registering '$fallbackName' ($fallbackAddress) for auto-park.")
+                        val newCar = BluetoothCarDevice(
+                            address = fallbackAddress,
+                            name = fallbackName,
+                            originalName = fallbackName,
+                            deviceType = "Car",
+                            isMonitoredCar = true,
+                            lastConnectedTimestamp = System.currentTimeMillis()
+                        )
+                        repository.registerBluetoothDevice(newCar, setAsPrimary = true)
+                        allMonitored = listOf(newCar)
                     }
+                }
+
+                val targetAddress: String? = rawAddress
+                val targetName: String? = rawName
+
+                // Resolve matching vehicle against monitored vehicles
+                val resolvedVehicle: BluetoothCarDevice? = if (isSimulatedDisconnect) {
+                    repository.findMatchingMonitoredDevice(targetAddress, targetName)
+                        ?: if (!targetAddress.isNullOrBlank()) {
+                            repository.getDeviceByAddress(targetAddress)?.takeIf { it.isMonitoredCar }
+                        } else null
+                        ?: allMonitored.firstOrNull()
+                        ?: BluetoothCarDevice(
+                            name = targetName ?: "Developer Test Car",
+                            originalName = targetName ?: "Developer Test Car",
+                            address = targetAddress ?: "AA:BB:CC:DD:EE:FF",
+                            deviceType = "Car",
+                            isMonitoredCar = true
+                        )
+                } else if (!targetAddress.isNullOrBlank() || !targetName.isNullOrBlank()) {
+                    // Physical device disconnect: match monitored device, or fallback to watched car / sole monitored car
+                    repository.findMatchingMonitoredDevice(targetAddress, targetName)
+                        ?: if (com.example.service.AutoParkLocationService.isWatching &&
+                            !com.example.service.AutoParkLocationService.watchedCarAddress.isNullOrBlank()
+                        ) {
+                            repository.getDeviceByAddress(com.example.service.AutoParkLocationService.watchedCarAddress!!)
+                        } else null
+                        ?: if (allMonitored.size == 1) {
+                            allMonitored.first()
+                        } else null
+                } else if (allMonitored.size == 1) {
+                    allMonitored.first()
+                } else {
+                    // Physical disconnect with null/empty extras (common on Android 12+ ACL broadcasts)
+                    if (com.example.service.AutoParkLocationService.isWatching &&
+                        !com.example.service.AutoParkLocationService.watchedCarAddress.isNullOrBlank()
+                    ) {
+                        repository.getDeviceByAddress(com.example.service.AutoParkLocationService.watchedCarAddress!!)
+                    } else {
+                        allMonitored.maxByOrNull { it.lastConnectedTimestamp }
+                            ?: allMonitored.firstOrNull()
+                    }
+                }
+
+                // If not resolved, fallback to watched car, sole monitored car, or most recently connected monitored car
+                val effectiveVehicle = resolvedVehicle
+                    ?: if (com.example.service.AutoParkLocationService.isWatching &&
+                        !com.example.service.AutoParkLocationService.watchedCarAddress.isNullOrBlank()
+                    ) {
+                        repository.getDeviceByAddress(com.example.service.AutoParkLocationService.watchedCarAddress!!)
+                    } else null
+                    ?: if (allMonitored.size == 1) allMonitored.first() else null
+                    ?: allMonitored.maxByOrNull { it.lastConnectedTimestamp }
+                    ?: allMonitored.firstOrNull()
+
+                if (!isSimulatedDisconnect && effectiveVehicle == null) {
+                    Log.d(
+                        TAG,
+                        "Ignored disconnect: device ($targetAddress, $targetName) is not a selected car in the BT car menu."
+                    )
+                    return@launch
+                }
+
+                val targetVehicle = effectiveVehicle ?: BluetoothCarDevice(
+                    name = targetName ?: "Developer Test Car",
+                    originalName = targetName ?: "Developer Test Car",
+                    address = targetAddress ?: "AA:BB:CC:DD:EE:FF",
+                    deviceType = "Car",
+                    isMonitoredCar = true
+                )
+
+                // Strict process synchronization: drops concurrent or rapid duplicate broadcasts for this car
+                val entryTime = System.currentTimeMillis()
+                val shouldProceed = synchronized(processLock) {
+                    val now = System.currentTimeMillis()
+                    if (isDisconnectProcessing && (now - disconnectProcessingStartTime) > 30_000L) {
+                        isDisconnectProcessing = false
+                    }
+                    val debounce = if (isSimulatedDisconnect) 3_000L else DEBOUNCE_WINDOW_MS
+                    if (isDisconnectProcessing) {
+                        Log.d(TAG, "Dropping disconnect broadcast: another disconnect event is currently being processed")
+                        false
+                    } else if ((entryTime - lastDisconnectHandledTime) < debounce) {
+                        Log.d(TAG, "Dropping duplicate disconnect broadcast received within debounce window ($debounce ms)")
+                        false
+                    } else {
+                        isDisconnectProcessing = true
+                        disconnectProcessingStartTime = entryTime
+                        lastDisconnectHandledTime = entryTime
+                        true
+                    }
+                }
+
+                if (!shouldProceed) {
+                    return@launch
+                }
+                acquiredProcessingLock = true
+
+                // 7. Handle Disconnection Event directly inside goAsync() with WakeLock:
+                // Reliable execution that works even when the app is completely closed or killed.
+                withTimeoutOrNull(25_000L) {
+                    val activeSpot = repository.getActiveSpotDirect()
+                    val mostRecentSpot = repository.getMostRecentSpotDirect()
+                    val referenceSpot = activeSpot ?: mostRecentSpot
 
                     // Prioritize user's custom renamed vehicle name
-                    val effectiveDeviceName = resolvedVehicle.name.ifBlank { null }
-                        ?: resolvedVehicle.originalName.ifBlank { null }
+                    val effectiveDeviceName = targetVehicle.name.ifBlank { null }
+                        ?: targetVehicle.originalName.ifBlank { null }
                         ?: targetName?.ifBlank { null }
                         ?: "Car Bluetooth"
 
-                    val effectiveDeviceAddress = resolvedVehicle.address.ifBlank { null }
+                    val effectiveDeviceAddress = targetVehicle.address.ifBlank { null }
                         ?: targetAddress?.ifBlank { null }
                         ?: "00:00:00:00:00:00"
 
@@ -309,13 +450,20 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                             accuracy = simAcc
                         }
                     } else {
-                        LocationHelper.getLocationForAutoPark(context)
+                        // Rapid pinpoint live fix acquisition (1.0-2.4s) prioritizing fresh satellite/fused coordinates
+                        LocationHelper.getLocationForAutoPark(
+                            context,
+                            oldSpotLat = referenceSpot?.latitude,
+                            oldSpotLng = referenceSpot?.longitude,
+                            oldSpotTimestamp = referenceSpot?.timestamp ?: 0L,
+                            triggerTime = entryTime
+                        ) ?: LocationHelper.getBestAvailableInstantFix(context)
                     }
 
-                    val lat: Double
-                    val lng: Double
-                    val alt: Double
-                    val accuracy: Float
+                    var lat = 0.0
+                    var lng = 0.0
+                    var alt = 0.0
+                    var accuracy = 0f
 
                     if (location != null && (location.latitude != 0.0 || location.longitude != 0.0)) {
                         lat = location.latitude
@@ -323,54 +471,58 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                         alt = location.altitude
                         accuracy = location.accuracy
                     } else {
-                        // Fall back to active spot or most recent spot
-                        val previousSpot = repository.getActiveSpotDirect()
-                            ?: repository.getMostRecentSpotDirect()
-                        if (previousSpot != null && (previousSpot.latitude != 0.0 || previousSpot.longitude != 0.0)) {
-                            lat = previousSpot.latitude
-                            lng = previousSpot.longitude
-                            alt = previousSpot.altitude
-                            accuracy = 25f
-                        } else {
-                            // Try system location manager one last time
-                            val sysLoc = LocationHelper.getCurrentLocation(context)
-                            if (sysLoc != null && (sysLoc.latitude != 0.0 || sysLoc.longitude != 0.0)) {
-                                lat = sysLoc.latitude
-                                lng = sysLoc.longitude
-                                alt = sysLoc.altitude
-                                accuracy = sysLoc.accuracy
-                            } else {
-                                Log.w(TAG, "No valid location fix available for auto-park. Aborting auto-save to avoid incorrect location.")
-                                return@withTimeoutOrNull
-                            }
-                        }
+                        Log.w(TAG, "No valid fresh location fix available for auto-park. Aborting auto-save to avoid saving previous/incorrect location.")
+                        return@withTimeoutOrNull
+                    }
+
+                    // Underground Parking Safeguard Check:
+                    // Only backtrack to entrance fix if:
+                    // 1) GPS accuracy is genuinely degraded (> 80m or satellite lost inside concrete garage)
+                    // 2) There is a reliable entrance fix from the CURRENT drive
+                    // 3) The entrance fix is physically near the current location (< 350m)!
+                    val isDegraded = accuracy > 80.0f
+                    val reliableEntranceFix = if (isDegraded) {
+                        val fix = com.example.geofence.GeofenceManager.getLastReliableFix(context)
+                        if (fix != null && (referenceSpot == null || fix.timestamp > referenceSpot.timestamp)) {
+                            val dist = FloatArray(1)
+                            Location.distanceBetween(lat, lng, fix.latitude, fix.longitude, dist)
+                            if (dist[0] <= 350f) fix else null
+                        } else null
+                    } else null
+                    val isUndergroundFallback = isDegraded && reliableEntranceFix != null
+                    val origAcc = accuracy
+
+                    if (isUndergroundFallback && reliableEntranceFix != null) {
+                        lat = reliableEntranceFix.latitude
+                        lng = reliableEntranceFix.longitude
+                        alt = reliableEntranceFix.altitude
+                        accuracy = reliableEntranceFix.accuracy
+                        Log.w(TAG, "Bluetooth Disconnect: Underground safeguard active. Degraded accuracy (${origAcc}m). Falling back to entrance fix: ($lat, $lng, ±${accuracy}m)")
                     }
 
                     val strings = context.getAppStrings()
 
-                    // Resolve address up front (up to 3.5s) so the single notification displays the exact street address immediately
-                    var streetAddress: String? = null
-                    try {
-                        streetAddress = withTimeoutOrNull(3500L) {
-                            LocationHelper.getAddressFromCoordinates(context, lat, lng)
-                        }
-                    } catch (_: Throwable) {}
+                    // Resolve street name when on a street, or clean coordinates in remote locations
+                    val resolvedAddress = withTimeoutOrNull(2200L) {
+                        LocationHelper.getStreetNameOrCoordinates(context, lat, lng)
+                    } ?: LocationHelper.formatCoordinates(lat, lng)
 
-                    val displayAddress = if (!streetAddress.isNullOrBlank()) {
-                        streetAddress
+                    val spotNote = if (isUndergroundFallback) {
+                        String.format(strings.undergroundFallbackNote, origAcc.toInt(), accuracy.toInt())
                     } else {
-                        LocationHelper.formatCoordinates(lat, lng)
+                        strings.bluetoothDisconnectNote
                     }
+                    val spotFloor = if (isUndergroundFallback) strings.undergroundFloorLevel else strings.floorGroundLevel
 
                     val spot = ParkingSpot(
                         latitude = lat,
                         longitude = lng,
                         altitude = alt,
                         accuracyMeters = accuracy,
-                        address = displayAddress,
+                        address = resolvedAddress,
                         spotName = String.format(strings.autoSavedSpotDefaultName, effectiveDeviceName),
-                        floorLevel = strings.floorGroundLevel,
-                        note = strings.bluetoothDisconnectNote,
+                        floorLevel = spotFloor,
+                        note = spotNote,
                         timestamp = System.currentTimeMillis(),
                         isAutoSaved = true,
                         bluetoothDeviceName = effectiveDeviceName,
@@ -379,41 +531,67 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                         isActive = true
                     )
 
-                    // Commit to Room database so spot is 100% secured
+                    // Stop any ongoing radar service or previous navigation
+                    try {
+                        com.example.service.ParkingRadarService.stop(context)
+                    } catch (_: Throwable) {}
+
+                    // Commit to Room database immediately so spot is 100% secured in just a few seconds
                     val newId = repository.saveNewParkingSpot(spot)
                     val savedSpot = spot.copy(id = newId)
+
+                    // Clear the rolling GPS buffer now that car is parked so old entrance fixes do not pollute next trip
+                    com.example.geofence.GeofenceManager.clearGpsBuffer(context)
+
+                    // Arm geofence tracking around the Bluetooth-saved parking location
+                    com.example.geofence.GeofenceManager.armGeofenceAfterBluetoothSave(context, lat, lng)
+
+                    // If underground safeguard was triggered, inform the user
+                    if (isUndergroundFallback) {
+                        try {
+                            val notifTitle = strings.undergroundSafeguardNotificationTitle
+                            val notifMsg = String.format(strings.undergroundSafeguardNotificationText, accuracy.toInt())
+                            ParkingNotificationHelper.showSystemNotification(context, notifTitle, notifMsg)
+                        } catch (_: Throwable) {}
+                    }
 
                     // Immediately sync active parking spot to Wear OS companion
                     try {
                         com.example.wear.WearDataLayerBridge.getInstance(context).syncParkingSpot(savedSpot)
                     } catch (_: Throwable) {}
 
-                    // Emit exactly ONE clean notification
+                    // Emit exactly ONE clean notification immediately showing street name (or coordinates if remote)
                     ParkingNotificationHelper.showCarParkedNotification(context, savedSpot)
-                    Log.d(TAG, "Successfully auto-parked vehicle '$effectiveDeviceName' ($effectiveDeviceAddress) with ID: $newId at $displayAddress")
+                    Log.d(TAG, "Successfully auto-parked vehicle '$effectiveDeviceName' ($effectiveDeviceAddress) with ID: $newId at $resolvedAddress (±${accuracy}m)")
 
-                    // If address was formatted coordinates because network geocoding was slow, asynchronously resolve in background and update the database ONLY (do NOT send another notification!)
-                    if (streetAddress.isNullOrBlank()) {
-                        try {
-                            val asyncAddress = withTimeoutOrNull(4000L) {
-                                LocationHelper.getAddressFromCoordinates(context, lat, lng)
+                    // If initial save fell back to coordinates due to network delay, resolve in background and update notification
+                    if (LocationHelper.isCoordinatesString(resolvedAddress)) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                val asyncAddress = withTimeoutOrNull(6000L) {
+                                    LocationHelper.getStreetNameOrCoordinates(context, lat, lng)
+                                }
+                                if (!asyncAddress.isNullOrBlank() && !LocationHelper.isCoordinatesString(asyncAddress) && asyncAddress != savedSpot.address) {
+                                    val updatedSpot = savedSpot.copy(address = asyncAddress)
+                                    repository.updateParkingSpot(updatedSpot)
+                                    com.example.wear.WearDataLayerBridge.getInstance(context).syncParkingSpot(updatedSpot)
+                                    ParkingNotificationHelper.showCarParkedNotification(context, updatedSpot)
+                                    Log.d(TAG, "Updated database spot and notification with resolved street address: $asyncAddress")
+                                }
+                            } catch (e: Throwable) {
+                                Log.d(TAG, "Background geocoding completed: ${e.message}")
                             }
-                            if (!asyncAddress.isNullOrBlank()) {
-                                val updatedSpot = savedSpot.copy(address = asyncAddress)
-                                repository.updateParkingSpot(updatedSpot)
-                                com.example.wear.WearDataLayerBridge.getInstance(context).syncParkingSpot(updatedSpot)
-                                Log.d(TAG, "Updated database spot with reverse-geocoded address: $asyncAddress")
-                            }
-                        } catch (e: Throwable) {
-                            Log.d(TAG, "Background geocoding completed: ${e.message}")
                         }
                     }
                 }
             } catch (e: Throwable) {
                 Log.e(TAG, "Error during auto-park bluetooth disconnect handling", e)
             } finally {
-                synchronized(processLock) {
-                    isDisconnectProcessing = false
+                try {
+                    com.example.service.AutoParkLocationService.stopWatching(context)
+                } catch (_: Throwable) {}
+                if (acquiredProcessingLock) {
+                    resetProcessingState()
                 }
                 safeReleaseWakeLock(wakeLock)
                 pendingResult.finish()

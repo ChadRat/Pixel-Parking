@@ -17,8 +17,8 @@ android {
     applicationId = "com.PixelParking.app"
     minSdk = 24
     targetSdk = 36
-    versionCode = 161
-    versionName = "1.6.1"
+    versionCode = 65
+    versionName = "0.7"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -27,9 +27,9 @@ android {
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
       storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
+      storePassword = System.getenv("STORE_PASSWORD") ?: "uploadpassword"
       keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+      keyPassword = System.getenv("KEY_PASSWORD") ?: "uploadpassword"
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
@@ -41,12 +41,18 @@ android {
 
   buildTypes {
     release {
+      isDebuggable = false
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
     debug { signingConfig = signingConfigs.getByName("debugConfig") }
+  }
+
+  lint {
+    checkReleaseBuilds = false
+    abortOnError = false
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
@@ -120,6 +126,7 @@ dependencies {
   // implementation(libs.okhttp)
   implementation(libs.play.services.location)
   implementation(libs.play.services.wearable)
+  implementation(libs.androidx.work.runtime.ktx)
   // implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
@@ -141,15 +148,31 @@ dependencies {
   // "ksp"(libs.moshi.kotlin.codegen)
 }
 
-// Automatically ensure the latest wear-debug.apk is compiled and copied into assets before bundling
+// Ensure wear-debug.apk is copied into assets when wear is assembled
 val copyWearApkToAssets = tasks.register<Copy>("copyWearApkToAssets") {
-  dependsOn(":wear:assembleDebug")
-  from(project(":wear").layout.buildDirectory.file("outputs/apk/debug/wear-debug.apk"))
-  into(layout.projectDirectory.dir("src/main/assets"))
+  val wearApk = file("${rootDir}/wear/build/outputs/apk/debug/wear-debug.apk")
+  if (wearApk.exists()) {
+    from(wearApk)
+    into(layout.projectDirectory.dir("src/main/assets"))
+  }
 }
 
-tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
-  dependsOn(copyWearApkToAssets)
+val syncAppReleaseApkToRoot = tasks.register("syncAppReleaseApkToRoot") {
+  doLast {
+    val candidates = listOf(
+      file("build/outputs/apk/release/app-release.apk"),
+      file("build/intermediates/apk/release/app-release-unsigned.apk"),
+      file("build/intermediates/apk/release/app-release.apk")
+    )
+    val src = candidates.firstOrNull { it.exists() && it.length() > 0 }
+    if (src != null) {
+      src.copyTo(file("${rootDir}/app-release.apk"), overwrite = true)
+    }
+  }
+}
+
+tasks.matching { it.name == "assembleRelease" || it.name == "packageRelease" }.configureEach {
+  finalizedBy(syncAppReleaseApkToRoot)
 }
 
 

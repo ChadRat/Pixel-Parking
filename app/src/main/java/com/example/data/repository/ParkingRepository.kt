@@ -1,10 +1,14 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.location.Location
+import android.util.Log
 import com.example.data.dao.BluetoothCarDeviceDao
 import com.example.data.dao.ParkingSpotDao
 import com.example.data.entity.BluetoothCarDevice
 import com.example.data.entity.ParkingSpot
+import com.example.data.entity.isBluetoothEntry
+import com.example.data.entity.isGeofenceEntry
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 
@@ -18,7 +22,89 @@ class ParkingRepository(
     val monitoredDevices: Flow<List<BluetoothCarDevice>> = bluetoothCarDeviceDao.getMonitoredDevices()
     val selectedCarDevice: Flow<BluetoothCarDevice?> = bluetoothCarDeviceDao.getSelectedMonitoredDeviceFlow()
 
-    suspend fun saveNewParkingSpot(spot: ParkingSpot): Long {
+    suspend fun saveNewParkingSpot(spot: ParkingSpot, allowGeofenceAfterBt: Boolean = false): Long {
+        val mostRecent = parkingSpotDao.getMostRecentSpotDirect()
+        val now = System.currentTimeMillis()
+        if (mostRecent != null) {
+            val timeDiffMs = Math.abs(now - mostRecent.timestamp)
+            val distMeters = try {
+                com.example.sensor.LocationHelper.calculateDistanceMeters(
+                    mostRecent.latitude, mostRecent.longitude,
+                    spot.latitude, spot.longitude
+                )
+            } catch (_: Throwable) {
+                999f
+            }
+
+            val isNearby = distMeters < 80f || (mostRecent.latitude == spot.latitude && mostRecent.longitude == spot.longitude)
+            val isSameCoords = distMeters < 30f || (mostRecent.latitude == spot.latitude && mostRecent.longitude == spot.longitude)
+            val isSameBtDevice = !spot.bluetoothDeviceAddress.isNullOrBlank() &&
+                    spot.bluetoothDeviceAddress.equals(mostRecent.bluetoothDeviceAddress, ignoreCase = true)
+            val isBothGeofence = spot.isGeofenceEntry && mostRecent.isGeofenceEntry
+
+            // Case A: High-priority Bluetooth disconnect arrives and a Geofence spot was recently saved nearby (< 80m, < 5 mins)
+            // Bluetooth disconnect provides hardware-level vehicle certainty -> supersedes/upgrades recent geofence spot
+            if (spot.isBluetoothEntry && mostRecent.isGeofenceEntry && isNearby && timeDiffMs < 5 * 60 * 1000L) {
+                try {
+                    Log.d("ParkingRepository", "High-priority Bluetooth disconnect event supersedes recent geofence spot (${mostRecent.id})")
+                } catch (_: Throwable) {}
+                val upgradedSpot = mostRecent.copy(
+                    latitude = spot.latitude,
+                    longitude = spot.longitude,
+                    altitude = if (spot.altitude != 0.0) spot.altitude else mostRecent.altitude,
+                    accuracyMeters = if (spot.accuracyMeters > 0) spot.accuracyMeters else mostRecent.accuracyMeters,
+                    address = if (spot.address.isNotBlank() && !spot.address.startsWith("Lat")) spot.address else mostRecent.address,
+                    spotName = spot.spotName,
+                    bluetoothDeviceName = spot.bluetoothDeviceName,
+                    bluetoothDeviceAddress = spot.bluetoothDeviceAddress,
+                    note = spot.note.ifBlank { mostRecent.note },
+                    isAutoSaved = true,
+                    isActive = true
+                )
+                parkingSpotDao.updateSpot(upgradedSpot)
+                return mostRecent.id
+            }
+
+            // Case B: Late-arriving Geofence exit save arrives after a Bluetooth disconnect event already saved the spot (< 80m, < 10 mins)
+            // Bluetooth spot takes precedence -> Geofence event smoothly merges into existing spot without creating a twin record
+            if (spot.isGeofenceEntry && mostRecent.isBluetoothEntry && isNearby && timeDiffMs < 10 * 60 * 1000L) {
+                if (!allowGeofenceAfterBt) {
+                    try {
+                        Log.d("ParkingRepository", "Late-arriving geofence exit event smoothly merges into existing Bluetooth disconnect spot (${mostRecent.id})")
+                    } catch (_: Throwable) {}
+                    if (spot.address.isNotBlank() && !spot.address.startsWith("Lat") && spot.address != "Unknown Address" &&
+                        (mostRecent.address.isBlank() || mostRecent.address.startsWith("Lat") || mostRecent.address == "Unknown Address")
+                    ) {
+                        parkingSpotDao.updateSpot(mostRecent.copy(address = spot.address, isActive = true))
+                    }
+                    return mostRecent.id
+                } else {
+                    try {
+                        Log.d("ParkingRepository", "Dev option enabled: allowing geofence auto-save even though Bluetooth spot exists (${mostRecent.id})")
+                    } catch (_: Throwable) {}
+                }
+            }
+
+            // Case C: Rapid broadcast duplicate detection (ACL + A2DP + Headset arriving within seconds)
+            // Simultaneous profile broadcasts arrive within milliseconds at the exact same coordinates.
+            // A genuine new/second Bluetooth disconnect (arriving after the rapid window or at a new location)
+            // is a distinct parking event and must be saved.
+            val isRapidDuplicate = isSameCoords && timeDiffMs < 10_000L
+            val isDuplicateGeofence = isBothGeofence && isNearby && timeDiffMs < 60_000L
+
+            if (isRapidDuplicate || isDuplicateGeofence) {
+                try {
+                    Log.w("ParkingRepository", "Deduplicated parking spot save! Returning existing ID: ${mostRecent.id}")
+                } catch (_: Throwable) {}
+                if (spot.address.isNotBlank() && !spot.address.startsWith("Lat") && spot.address != "Unknown Address" &&
+                    (mostRecent.address.isBlank() || mostRecent.address.startsWith("Lat") || mostRecent.address == "Unknown Address")
+                ) {
+                    parkingSpotDao.updateSpot(mostRecent.copy(address = spot.address, isActive = true))
+                }
+                return mostRecent.id
+            }
+        }
+
         // Deactivate previous active spot first
         parkingSpotDao.deactivateAllSpots()
         return parkingSpotDao.insertSpot(spot.copy(isActive = true))
@@ -184,7 +270,7 @@ class ParkingRepository(
         val cleanName = rawName?.trim()
 
         // 1. Direct or normalized MAC address match among monitored devices
-        if (!cleanAddress.isNullOrBlank()) {
+        if (!cleanAddress.isNullOrBlank() && cleanAddress != "00:00:00:00:00:00") {
             val matchByAddress = monitored.firstOrNull { dev ->
                 dev.address.equals(cleanAddress, ignoreCase = true) ||
                         dev.address.replace(":", "").replace("-", "").equals(strippedAddress, ignoreCase = true)
@@ -205,12 +291,14 @@ class ParkingRepository(
             }
             if (matchByOriginalName != null) return matchByOriginalName
 
-            // 4. Fuzzy containment match on name or originalName among monitored devices
-            val matchByFuzzy = monitored.firstOrNull { dev ->
-                (dev.name.isNotBlank() && (dev.name.contains(cleanName, ignoreCase = true) || cleanName.contains(dev.name, ignoreCase = true))) ||
-                        (dev.originalName.isNotBlank() && (dev.originalName.contains(cleanName, ignoreCase = true) || cleanName.contains(dev.originalName, ignoreCase = true)))
+            // 4. Fuzzy containment match on name or originalName among monitored devices (min length 4 to avoid false positives)
+            if (cleanName.length >= 4) {
+                val matchByFuzzy = monitored.firstOrNull { dev ->
+                    (dev.name.isNotBlank() && dev.name.length >= 4 && (dev.name.contains(cleanName, ignoreCase = true) || cleanName.contains(dev.name, ignoreCase = true))) ||
+                            (dev.originalName.isNotBlank() && dev.originalName.length >= 4 && (dev.originalName.contains(cleanName, ignoreCase = true) || cleanName.contains(dev.originalName, ignoreCase = true)))
+                }
+                if (matchByFuzzy != null) return matchByFuzzy
             }
-            if (matchByFuzzy != null) return matchByFuzzy
         }
 
         return null

@@ -94,6 +94,7 @@ fun CompassRadarScreen(
     telemetry: NavigationTelemetry,
     compassState: CompassState,
     isNavBarVisible: Boolean = true,
+    isTabSelected: Boolean = true,
     onBack: () -> Unit = {},
     onUserInteraction: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -120,8 +121,10 @@ fun CompassRadarScreen(
     val carBadgeStyle by viewModel.carBadgeStyle.collectAsStateWithLifecycle()
     val capyVariant by viewModel.capyVariant.collectAsStateWithLifecycle()
 
-    DisposableEffect(Unit) {
-        viewModel.startCompass()
+    DisposableEffect(isTabSelected) {
+        if (isTabSelected) {
+            viewModel.startCompass()
+        }
         onDispose {
             viewModel.stopCompass()
         }
@@ -312,25 +315,6 @@ fun CompassRadarScreen(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     ) {
                         DropdownMenuItem(
-                            text = { Text(strings.calibrateCompass, color = MaterialTheme.colorScheme.onSurface) },
-                            leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) },
-                            onClick = {
-                                showMenu = false
-                                viewModel.recalibrateCompass()
-                                showCalibrationDialog = true
-                            }
-                        )
-
-                        DropdownMenuItem(
-                            text = { Text(strings.parkingTimerTitle, color = MaterialTheme.colorScheme.onSurface) },
-                            leadingIcon = { Icon(Icons.Default.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                            onClick = {
-                                showMenu = false
-                                viewModel.openParkingTimer()
-                            }
-                        )
-
-                        DropdownMenuItem(
                             text = { Text(strings.shareSpot, color = MaterialTheme.colorScheme.onSurface) },
                             leadingIcon = { Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) },
                             onClick = {
@@ -339,50 +323,15 @@ fun CompassRadarScreen(
                             }
                         )
 
-                        if (activeSpot != null) {
-                            if (isBtMode) {
-                                DropdownMenuItem(
-                                    text = { Text("Stop Bluetooth Radar", color = MaterialTheme.colorScheme.onSurface) },
-                                    leadingIcon = { Icon(Icons.Default.BluetoothSearching, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                                    onClick = {
-                                        showMenu = false
-                                        viewModel.stopBtProximityFinder()
-                                    }
-                                )
-                            } else if (associatedDevice != null) {
-                                DropdownMenuItem(
-                                    text = { Text("Find with Bluetooth (${associatedDevice.name})", color = MaterialTheme.colorScheme.onSurface) },
-                                    leadingIcon = { Icon(Icons.Default.BluetoothSearching, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                                    onClick = {
-                                        showMenu = false
-                                        val started = viewModel.startBtProximityFinder(associatedDevice)
-                                        if (!started) {
-                                            Toast.makeText(context, "Scanning for vehicle Bluetooth...", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                )
+                        DropdownMenuItem(
+                            text = { Text(strings.foundCar, color = MaterialTheme.colorScheme.onSurface) },
+                            leadingIcon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) },
+                            onClick = {
+                                showMenu = false
+                                viewModel.markCarFound()
+                                onBack()
                             }
-
-                            DropdownMenuItem(
-                                text = { Text(strings.editDetails, color = MaterialTheme.colorScheme.onSurface) },
-                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) },
-                                onClick = {
-                                    showMenu = false
-                                    currentNoteText = activeSpot.note
-                                    showEditNoteDialog = true
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = { Text(strings.foundCar, color = MaterialTheme.colorScheme.onSurface) },
-                                leadingIcon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) },
-                                onClick = {
-                                    showMenu = false
-                                    viewModel.markCarFound()
-                                    onBack()
-                                }
-                            )
-                        }
+                        )
                     }
                 }
             }
@@ -526,6 +475,12 @@ fun CompassRadarScreen(
 
             Spacer(modifier = Modifier.weight(0.7f))
 
+            val distanceCoveredProgress = if (isBtMode) {
+                viewModel.getDistanceCoveredProgress(null, btProximityState.distanceMeters, isBtMode = true)
+            } else {
+                telemetry.distanceCoveredProgress
+            }
+
             // CENTER FIND MY DEVICE SCALLOPED PROXIMITY BADGE WITH FIXED DIRECTIONAL ARROW
             CompassRadarNeedle(
                 relativeArrowAngle = effectiveRelativeArrowAngle,
@@ -533,6 +488,7 @@ fun CompassRadarScreen(
                 distanceMeters = effectiveDistanceMeters,
                 isAlignedWithTarget = isAligned,
                 hasActiveTarget = effectiveHasTarget,
+                distanceCoveredProgress = distanceCoveredProgress,
                 modifier = Modifier
                     .fillMaxWidth(0.78f)
                     .aspectRatio(1f)

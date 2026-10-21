@@ -59,7 +59,7 @@ class WearSensorManager(private val context: Context) : SensorEventListener {
     fun setCrownOrientation(isRight: Boolean) {
         if (crownOnRight != isRight) {
             crownOnRight = isRight
-            if (_currentLocation.value == null && lastRawPhoneDist != null && lastRawPhoneAngle != null) {
+            if (_currentLocation.value == null && lastRawPhoneDist != null && lastRawPhoneAngle != null && hasTarget) {
                 applyPhoneTelemetry(lastRawPhoneDist!!, lastRawPhoneAngle!!)
             } else {
                 recalculateTelemetry()
@@ -84,6 +84,10 @@ class WearSensorManager(private val context: Context) : SensorEventListener {
     }
 
     private fun applyPhoneTelemetry(phoneDist: Float, phoneAngle: Float) {
+        if (!hasTarget) {
+            _telemetry.value = WearTelemetry(hasTarget = false, relativeArrowAngle = 0f)
+            return
+        }
         // Apply 180° inversion offset if watch is worn with crown on the left
         val adjustedPhoneAngle = if (!crownOnRight) {
             (phoneAngle + 180f) % 360f
@@ -171,7 +175,7 @@ class WearSensorManager(private val context: Context) : SensorEventListener {
 
     private fun recalculateTelemetry() {
         if (!hasTarget) {
-            _telemetry.value = WearTelemetry(hasTarget = false)
+            _telemetry.value = WearTelemetry(hasTarget = false, relativeArrowAngle = 0f)
             return
         }
 
@@ -204,6 +208,8 @@ class WearSensorManager(private val context: Context) : SensorEventListener {
                 hasTarget = true,
                 isAligned = isAligned
             )
+        } else if (lastRawPhoneDist != null && lastRawPhoneAngle != null) {
+            applyPhoneTelemetry(lastRawPhoneDist!!, lastRawPhoneAngle!!)
         }
     }
 }

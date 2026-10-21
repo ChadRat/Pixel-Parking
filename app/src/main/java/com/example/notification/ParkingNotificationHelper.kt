@@ -13,7 +13,11 @@ import com.example.MainActivity
 import com.example.data.entity.ParkingSpot
 import com.example.receiver.ParkingAlarmDismissReceiver
 import com.example.receiver.ParkingTimerActionReceiver
+import com.example.sensor.LocationHelper
 import com.example.ui.i18n.getAppStrings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 object ParkingNotificationHelper {
@@ -22,6 +26,7 @@ object ParkingNotificationHelper {
     const val CHANNEL_RADAR_SERVICE = "autopark_channel_radar"
     const val CHANNEL_TIMER_ALARM = "autopark_channel_timer_alarm"
     const val CHANNEL_TIMER_RUNNING = "autopark_channel_timer_running"
+    const val CHANNEL_CAR_CONNECTION_WATCHER = "autopark_channel_connection_watcher"
 
     const val NOTIFICATION_ID_PARKED = 1001
     const val NOTIFICATION_ID_SERVICE = 1002
@@ -29,6 +34,8 @@ object ParkingNotificationHelper {
     const val NOTIFICATION_ID_TIMER_ALARM = 1004
     const val NOTIFICATION_ID_TIMER_RUNNING = 1005
     const val NOTIFICATION_ID_TIMER_STOPPED = 1006
+    const val NOTIFICATION_ID_AUTOPARK_SAVING = 1007
+    const val NOTIFICATION_ID_CAR_WATCHER = 1008
 
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -76,11 +83,93 @@ object ParkingNotificationHelper {
                 setShowBadge(false)
             }
 
+            val watcherChannel = NotificationChannel(
+                CHANNEL_CAR_CONNECTION_WATCHER,
+                if (strings.languageSection == "Γλώσσα") "Παρακολούθηση σύνδεσης οχήματος" else "Vehicle Connection Watcher",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = if (strings.languageSection == "Γλώσσα") "Αθόρυβη παρακολούθηση που διατηρεί την εφαρμογή ενεργή κατά την οδήγηση" else "Silent monitor that keeps Pixel Parking alive while driving to save parking spot upon disconnect"
+                setShowBadge(false)
+                enableLights(false)
+                enableVibration(false)
+            }
+
             notificationManager.createNotificationChannel(alertsChannel)
             notificationManager.createNotificationChannel(serviceChannel)
             notificationManager.createNotificationChannel(alarmChannel)
             notificationManager.createNotificationChannel(timerRunningChannel)
+            notificationManager.createNotificationChannel(watcherChannel)
         }
+    }
+
+    fun buildCarConnectionNotification(context: Context, carName: String): android.app.Notification {
+        createNotificationChannels(context)
+        val strings = context.getAppStrings()
+        val contentIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingContentIntent = PendingIntent.getActivity(
+            context,
+            0,
+            contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val text = if (strings.languageSection == "Γλώσσα") {
+            "Συνδέθηκε με $carName • Αυτόματη αποθήκευση ενεργή"
+        } else {
+            "Connected to $carName • Auto-save active"
+        }
+
+        return NotificationCompat.Builder(context, CHANNEL_CAR_CONNECTION_WATCHER)
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setContentTitle(strings.appName)
+            .setContentText(text)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setOngoing(true)
+            .setShowWhen(false)
+            .setContentIntent(pendingContentIntent)
+            .build()
+    }
+
+    fun buildPersistentMonitorNotification(context: Context, carName: String? = null): android.app.Notification {
+        createNotificationChannels(context)
+        val strings = context.getAppStrings()
+        val contentIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingContentIntent = PendingIntent.getActivity(
+            context,
+            0,
+            contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val text = if (!carName.isNullOrBlank()) {
+            if (strings.languageSection == "Γλώσσα") {
+                "Συνδέθηκε με $carName • Αυτόματη αποθήκευση έτοιμη"
+            } else {
+                "Connected to $carName • Auto-save armed"
+            }
+        } else {
+            if (strings.languageSection == "Γλώσσα") {
+                "Αυτόματη στάθμευση ενεργή • Έτοιμο για σύνδεση Bluetooth"
+            } else {
+                "Auto-Park Active • Ready for vehicle Bluetooth"
+            }
+        }
+
+        return NotificationCompat.Builder(context, CHANNEL_CAR_CONNECTION_WATCHER)
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setContentTitle(strings.appName)
+            .setContentText(text)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setOngoing(true)
+            .setShowWhen(false)
+            .setContentIntent(pendingContentIntent)
+            .build()
     }
 
     fun showCarParkedNotification(context: Context, spot: ParkingSpot) {
@@ -126,9 +215,13 @@ object ParkingNotificationHelper {
         )
 
         val deviceLabel = spot.bluetoothDeviceName?.takeIf { it.isNotBlank() } ?: strings.notificationCarBluetoothDefault
-        val title = String.format(strings.notificationDeviceDisconnected, deviceLabel)
+        val title = if (!spot.bluetoothDeviceName.isNullOrBlank()) {
+            "${spot.bluetoothDeviceName} • ${strings.notificationParkingLocationSaved}"
+        } else {
+            strings.notificationParkingLocationSaved
+        }
         val addressText = spot.address.ifBlank {
-            String.format(Locale.US, "%.5f, %.5f", spot.latitude, spot.longitude)
+            LocationHelper.formatCoordinates(spot.latitude, spot.longitude)
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_PARKING_ALERTS)
@@ -136,18 +229,44 @@ object ParkingNotificationHelper {
             .setContentTitle(title)
             .setContentText(addressText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(addressText))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
+            .setOnlyAlertOnce(false)
             .setContentIntent(pendingContentIntent)
             .addAction(android.R.drawable.ic_dialog_map, strings.notificationActionGoogleMaps, pendingMapIntent)
             .addAction(android.R.drawable.ic_menu_compass, strings.notificationActionWaypointDirection, pendingCompassIntent)
 
         try {
-            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_PARKED, builder.build())
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            if (notificationManager != null) {
+                notificationManager.notify(NOTIFICATION_ID_PARKED, builder.build())
+            } else {
+                NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_PARKED, builder.build())
+            }
         } catch (e: Throwable) {
             e.printStackTrace()
+        }
+
+        // If the notification text is currently coordinates, check if a street name can be resolved to upgrade the notification
+        if (LocationHelper.isCoordinatesString(spot.address) && (spot.latitude != 0.0 || spot.longitude != 0.0)) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val resolved = LocationHelper.getStreetNameOrCoordinates(context, spot.latitude, spot.longitude)
+                    if (!LocationHelper.isCoordinatesString(resolved) && resolved != spot.address) {
+                        val db = com.example.data.database.AppDatabase.getDatabase(context)
+                        val repo = com.example.data.repository.ParkingRepository(db.parkingSpotDao(), db.bluetoothCarDeviceDao())
+                        val updatedSpot = spot.copy(address = resolved)
+                        repo.updateParkingSpot(updatedSpot)
+                        try {
+                            com.example.wear.WearDataLayerBridge.getInstance(context).syncParkingSpot(updatedSpot)
+                        } catch (_: Throwable) {}
+                        showCarParkedNotification(context, updatedSpot)
+                    }
+                } catch (_: Throwable) {}
+            }
         }
     }
 

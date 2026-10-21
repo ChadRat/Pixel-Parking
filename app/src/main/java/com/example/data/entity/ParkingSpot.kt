@@ -31,19 +31,41 @@ val ParkingSpot.isGeofenceEntry: Boolean
     get() = bluetoothDeviceAddress == "GEOFENCE_WALKING_DETECTION" ||
             bluetoothDeviceAddress?.startsWith("GEOFENCE") == true ||
             bluetoothDeviceName == "Walking Detection" ||
+            bluetoothDeviceName == "Walk Away Detection" ||
+            bluetoothDeviceName?.contains("Walk Away", ignoreCase = true) == true ||
             bluetoothDeviceName == "Geofence Auto-Park" ||
             bluetoothDeviceName?.contains("Geofence", ignoreCase = true) == true ||
+            spotName.contains("Walk Away", ignoreCase = true) ||
             spotName.contains("Geofence", ignoreCase = true) ||
+            note.contains("Walk Away", ignoreCase = true) ||
             note.contains("Geofence", ignoreCase = true) ||
+            note.contains("walked away", ignoreCase = true) ||
             note.contains("started walking", ignoreCase = true) ||
+            note.contains("απομακρυνθήκατε", ignoreCase = true) ||
             note.contains("ξεκινήσατε να περπατάτε", ignoreCase = true)
+
+val ParkingSpot.isWalkAwayEntry: Boolean
+    get() = isGeofenceEntry
+
+/**
+ * Returns true if this parking spot was created from custom far away coordinates (developer / testing coordinates).
+ */
+val ParkingSpot.isCustomFarAwayEntry: Boolean
+    get() = bluetoothDeviceAddress == "DEV_CUSTOM_FAR_AWAY" ||
+            bluetoothDeviceAddress?.startsWith("DEV_CUSTOM") == true ||
+            note.contains("Dev Custom Coordinates", ignoreCase = true) ||
+            note.contains("Custom Coordinates", ignoreCase = true) ||
+            note.contains("Far Away", ignoreCase = true) ||
+            bluetoothDeviceName == "Custom Coordinates" ||
+            bluetoothDeviceName?.contains("Custom Coordinates", ignoreCase = true) == true ||
+            spotName.contains("Custom Far Away", ignoreCase = true)
 
 /**
  * Returns true if this parking spot was saved via Bluetooth connection/disconnection.
  */
 val ParkingSpot.isBluetoothEntry: Boolean
     get() {
-        if (isGeofenceEntry) return false
+        if (isGeofenceEntry || isCustomFarAwayEntry) return false
 
         val addr = bluetoothDeviceAddress
         if (!addr.isNullOrBlank() && addr != "GEOFENCE_WALKING_DETECTION" && !addr.startsWith("GEOFENCE")) {
@@ -79,4 +101,16 @@ val ParkingSpot.isBluetoothEntry: Boolean
 
         return false
     }
+
+/**
+ * Returns true if this parking spot had the underground parking safeguard applied
+ * (last reliable entrance GPS fix saved due to degraded underground signal).
+ */
+val ParkingSpot.isUndergroundFallback: Boolean
+    get() = note.contains("Underground", ignoreCase = true) ||
+            note.contains("entrance", ignoreCase = true) ||
+            note.contains("Υπόγειο", ignoreCase = true) ||
+            floorLevel.contains("Underground", ignoreCase = true) ||
+            floorLevel.contains("Υπόγειο", ignoreCase = true)
+
 

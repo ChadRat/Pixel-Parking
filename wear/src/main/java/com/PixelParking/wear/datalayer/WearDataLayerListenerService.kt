@@ -67,8 +67,9 @@ class WearDataLayerListenerService : WearableListenerService() {
                 if (parts.size >= 3) {
                     val dist = parts[0].toFloatOrNull() ?: return
                     val relativeAngle = parts[2].toFloatOrNull() ?: return
+                    val progress = if (parts.size >= 5) parts[4].toFloatOrNull() else null
                     WearParkingStateHolder.getInstance(applicationContext)
-                        .updatePhoneTelemetry(dist, relativeAngle)
+                        .updatePhoneTelemetry(dist, relativeAngle, progress)
                 }
             } catch (e: Exception) {
                 Log.d(TAG, "Error parsing telemetry: ${e.message}")

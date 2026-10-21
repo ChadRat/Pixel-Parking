@@ -24,6 +24,7 @@ data class WearParkingState(
     val timestamp: Long = 0L,
     val phoneDistanceMeters: Float? = null,
     val phoneRelativeAngle: Float? = null,
+    val phoneDistanceCoveredProgress: Float? = null,
     val crownOnRight: Boolean = true,
     val lastSyncTime: Long = 0L
 )
@@ -115,10 +116,11 @@ class WearParkingStateHolder private constructor(private val context: Context) {
         Log.d(TAG, "Updated Wear parking state: hasSpot=$hasActive, lat=$latitude, lng=$longitude")
     }
 
-    fun updatePhoneTelemetry(distanceMeters: Float, relativeAngle: Float) {
+    fun updatePhoneTelemetry(distanceMeters: Float, relativeAngle: Float, distanceCoveredProgress: Float? = null) {
         _parkingState.value = _parkingState.value.copy(
             phoneDistanceMeters = distanceMeters,
-            phoneRelativeAngle = relativeAngle
+            phoneRelativeAngle = relativeAngle,
+            phoneDistanceCoveredProgress = distanceCoveredProgress
         )
     }
 
