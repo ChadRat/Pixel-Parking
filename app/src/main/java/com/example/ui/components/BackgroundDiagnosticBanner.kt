@@ -19,11 +19,13 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,8 +46,12 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -142,13 +148,17 @@ fun BackgroundDiagnosticBanner(
         hasBluetoothConnect = granted
     }
 
-    val isAllGranted = isBatteryOptimizationIgnored && hasBackgroundLocation && hasBluetoothConnect
+    val isBluetoothNeeded = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val isBluetoothGranted = !isBluetoothNeeded || hasBluetoothConnect
+    val isAllGranted = isBatteryOptimizationIgnored && hasBackgroundLocation && isBluetoothGranted
 
-    // Determine how many steps are ready
-    val totalSteps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 3 else 2
-    val grantedCount = (if (isBatteryOptimizationIgnored) 1 else 0) +
-            (if (hasBackgroundLocation) 1 else 0) +
-            (if (hasBluetoothConnect || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) 1 else 0)
+    val pendingBattery = !isBatteryOptimizationIgnored
+    val pendingLocation = !hasBackgroundLocation
+    val pendingBluetooth = isBluetoothNeeded && !hasBluetoothConnect
+
+    val pendingCount = (if (pendingBattery) 1 else 0) +
+            (if (pendingLocation) 1 else 0) +
+            (if (pendingBluetooth) 1 else 0)
 
     val shouldShow = !isDismissed && (!isAllGranted || showWhenAllGranted)
 
@@ -162,18 +172,17 @@ fun BackgroundDiagnosticBanner(
                 .fillMaxWidth()
                 .animateContentSize(animationSpec = tween(300, easing = FastOutSlowInEasing))
                 .testTag("background_diagnostic_banner"),
-            shape = RoundedCornerShape(26.dp),
+            shape = RoundedCornerShape(22.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainer
-            ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+            )
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(18.dp)
+                    .padding(16.dp)
             ) {
-                // Top Header Row
+                // Top Header Row matching settings cards
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -184,13 +193,12 @@ fun BackgroundDiagnosticBanner(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        // Animated Scallop Badge or Squircle
                         Surface(
                             shape = RoundedCornerShape(16.dp),
                             color = if (isAllGranted) {
                                 MaterialTheme.colorScheme.primaryContainer
                             } else {
-                                MaterialTheme.colorScheme.primaryContainer
+                                MaterialTheme.colorScheme.surfaceContainerHighest
                             },
                             modifier = Modifier.size(46.dp)
                         ) {
@@ -214,38 +222,28 @@ fun BackgroundDiagnosticBanner(
                         }
 
                         Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = strings.backgroundDiagnosticTitle,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = HeavyRoundFont,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                            Text(
+                                text = strings.backgroundDiagnosticTitle,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
 
-                            Spacer(modifier = Modifier.height(2.dp))
+                            if (isAllGranted) {
+                                Spacer(modifier = Modifier.height(2.dp))
 
-                            // Status Pill
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isAllGranted) {
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceContainerHighest
-                                }
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                // Status Pill matching settings badges
+                                Surface(
+                                    shape = RoundedCornerShape(100.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                                 ) {
-                                    if (isAllGranted) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
                                         Icon(
                                             imageVector = Icons.Default.Check,
                                             contentDescription = null,
@@ -258,80 +256,49 @@ fun BackgroundDiagnosticBanner(
                                             fontWeight = FontWeight.SemiBold,
                                             color = MaterialTheme.colorScheme.primary
                                         )
-                                    } else {
-                                        Text(
-                                            text = "${strings.backgroundSetupRecommended} • $grantedCount/$totalSteps",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
                                     }
                                 }
                             }
                         }
                     }
 
-                    // Action at top right: Open Setup Sheet button, Dismiss on home, or Expand/Collapse toggle in settings
+                    // Action at top right: Dismiss on home, or Expand/Collapse toggle in settings
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        if (onOpenSetupSheet != null) {
-                            Surface(
-                                onClick = onOpenSetupSheet,
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier
-                                    .height(34.dp)
-                                    .testTag("btn_banner_open_setup_sheet")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(13.dp)
-                                    )
-                                    Text(
-                                        text = "Setup Pop-up",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = HeavyRoundFont
-                                    )
-                                }
-                            }
-                        }
-
                         if (isAllGranted && showWhenAllGranted) {
-                            IconButton(
-                                onClick = { isExpandedWhenAllGranted = !isExpandedWhenAllGranted },
+                            Box(
+                                contentAlignment = Alignment.Center,
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                    .clickable { isExpandedWhenAllGranted = !isExpandedWhenAllGranted }
                                     .testTag("toggle_expand_diagnostic_banner")
                             ) {
                                 Icon(
                                     imageVector = if (isExpandedWhenAllGranted) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                                     contentDescription = if (isExpandedWhenAllGranted) "Collapse" else "Expand",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(22.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         } else if (dismissible) {
-                            IconButton(
-                                onClick = { isDismissed = true },
+                            Box(
+                                contentAlignment = Alignment.Center,
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f))
+                                    .clickable { isDismissed = true }
                                     .testTag("dismiss_diagnostic_banner")
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
                                     contentDescription = strings.cancel,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(11.dp)
                                 )
                             }
                         }
@@ -339,11 +306,11 @@ fun BackgroundDiagnosticBanner(
                 }
 
                 // Description
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = if (isAllGranted) strings.backgroundSetupActiveDesc else strings.backgroundDiagnosticDesc,
-                    fontSize = 12.5.sp,
-                    lineHeight = 17.5.sp,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
@@ -358,82 +325,107 @@ fun BackgroundDiagnosticBanner(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 10.dp),
+                            .padding(top = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        WavyDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                            waveLength = 32f,
-                            amplitude = 4.5f,
-                            thickness = 3.5f,
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
                             modifier = Modifier.padding(vertical = 4.dp)
                         )
 
-                        // 1. Unrestricted Battery
-                        SetupStepRow(
-                            title = strings.backgroundSetupStepBatteryTitle,
-                            description = strings.backgroundSetupStepBatteryDesc,
-                            icon = Icons.Default.BatteryChargingFull,
-                            isGranted = isBatteryOptimizationIgnored,
-                            actionLabel = strings.backgroundSetupStatusAction,
-                            readyLabel = strings.backgroundSetupStatusReady,
-                            onClickAction = {
-                                requestBatteryExemption(context)
-                            },
-                            onGrantedTap = {
-                                Toast.makeText(context, "${strings.backgroundSetupStepBatteryTitle}: ${strings.backgroundSetupStatusReady} ✓", Toast.LENGTH_SHORT).show()
-                            },
-                            testTag = "setup_step_battery"
-                        )
+                        // 1. Unrestricted Battery - only show if user hasn't enabled it
+                        if (pendingBattery) {
+                            SetupStepRow(
+                                title = strings.backgroundSetupStepBatteryTitle,
+                                description = strings.backgroundSetupStepBatteryDesc,
+                                icon = Icons.Default.BatteryChargingFull,
+                                isGranted = false,
+                                actionLabel = strings.backgroundSetupStatusAction,
+                                readyLabel = strings.backgroundSetupStatusReady,
+                                onClickAction = {
+                                    requestBatteryExemption(context)
+                                },
+                                onGrantedTap = {},
+                                testTag = "setup_step_battery"
+                            )
+                        }
 
-                        // 2. Background Location
-                        SetupStepRow(
-                            title = strings.backgroundSetupStepLocationTitle,
-                            description = strings.backgroundSetupStepLocationDesc,
-                            icon = Icons.Default.LocationOn,
-                            isGranted = hasBackgroundLocation,
-                            actionLabel = strings.backgroundSetupStatusAction,
-                            readyLabel = strings.backgroundSetupStatusReady,
-                            onClickAction = {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                    if (!hasFineLocation) {
-                                        fineLocationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                        try {
+                        // 2. Background Location - only show if user hasn't enabled it
+                        if (pendingLocation) {
+                            SetupStepRow(
+                                title = strings.backgroundSetupStepLocationTitle,
+                                description = strings.backgroundSetupStepLocationDesc,
+                                icon = Icons.Default.LocationOn,
+                                isGranted = false,
+                                actionLabel = strings.backgroundSetupStatusAction,
+                                readyLabel = strings.backgroundSetupStatusReady,
+                                onClickAction = {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                        if (!hasFineLocation) {
+                                            fineLocationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                            try {
+                                                backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                                            } catch (_: Throwable) {
+                                                openAppSettings(context)
+                                            }
+                                        } else {
                                             backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                                        } catch (_: Throwable) {
-                                            openAppSettings(context)
                                         }
                                     } else {
-                                        backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                                        fineLocationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                                     }
-                                } else {
-                                    fineLocationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                                }
-                            },
-                            onGrantedTap = {
-                                Toast.makeText(context, "${strings.backgroundSetupStepLocationTitle}: ${strings.backgroundSetupStatusReady} ✓", Toast.LENGTH_SHORT).show()
-                            },
-                            testTag = "setup_step_location"
-                        )
+                                },
+                                onGrantedTap = {},
+                                testTag = "setup_step_location"
+                            )
+                        }
 
-                        // 3. Nearby Devices (Android 12+)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        // 3. Nearby Devices (Android 12+) - only show if user hasn't enabled it
+                        if (pendingBluetooth) {
                             SetupStepRow(
                                 title = strings.backgroundSetupStepBluetoothTitle,
                                 description = strings.backgroundSetupStepBluetoothDesc,
                                 icon = Icons.Default.Bluetooth,
-                                isGranted = hasBluetoothConnect,
+                                isGranted = false,
                                 actionLabel = strings.backgroundSetupStatusAction,
                                 readyLabel = strings.backgroundSetupStatusReady,
                                 onClickAction = {
                                     bluetoothConnectLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
                                 },
-                                onGrantedTap = {
-                                    Toast.makeText(context, "${strings.backgroundSetupStepBluetoothTitle}: ${strings.backgroundSetupStatusReady} ✓", Toast.LENGTH_SHORT).show()
-                                },
+                                onGrantedTap = {},
                                 testTag = "setup_step_bluetooth"
                             )
+                        }
+
+                        // Fallback when explicitly viewed with showWhenAllGranted = true
+                        if (isAllGranted) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("setup_all_configured")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Text(
+                                        text = strings.backgroundSetupActiveDesc,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -455,13 +447,8 @@ private fun SetupStepRow(
     testTag: String
 ) {
     Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.65f),
-        border = BorderStroke(
-            1.dp,
-            if (isGranted) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
-            else MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-        ),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
         modifier = Modifier
             .fillMaxWidth()
             .testTag(testTag)
@@ -476,25 +463,25 @@ private fun SetupStepRow(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
                 modifier = Modifier.weight(1f)
             ) {
                 // Step status icon squircle
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = if (isGranted) {
                         MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
                     } else {
                         MaterialTheme.colorScheme.surfaceContainerHighest
                     },
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(42.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = if (isGranted) Icons.Default.CheckCircle else icon,
                             contentDescription = null,
-                            tint = if (isGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
+                            tint = if (isGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
@@ -505,25 +492,25 @@ private fun SetupStepRow(
                 ) {
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.bodyMedium,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = description,
-                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = 15.sp
+                        lineHeight = 16.sp
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
-            // Action Pill Button or Ready Badge
+            // Action Button or Ready Badge
             if (isGranted) {
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                     modifier = Modifier.height(34.dp)
                 ) {
@@ -541,36 +528,29 @@ private fun SetupStepRow(
                         Text(
                             text = readyLabel,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = HeavyRoundFont,
+                            fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
             } else {
-                Surface(
+                Button(
                     onClick = onClickAction,
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shadowElevation = 1.dp,
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                     modifier = Modifier
-                        .height(36.dp)
+                        .height(34.dp)
                         .testTag("${testTag}_action_btn")
                 ) {
-                    Box(
-                        modifier = Modifier.padding(horizontal = 14.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = actionLabel,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = HeavyRoundFont,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            letterSpacing = 0.3.sp
-                        )
-                    }
+                    Text(
+                        text = actionLabel,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }

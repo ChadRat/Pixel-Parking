@@ -10,6 +10,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.MainActivity
+import com.example.R
 import com.example.data.entity.ParkingSpot
 import com.example.receiver.ParkingAlarmDismissReceiver
 import com.example.receiver.ParkingTimerActionReceiver
@@ -122,7 +123,7 @@ object ParkingNotificationHelper {
         }
 
         return NotificationCompat.Builder(context, CHANNEL_CAR_CONNECTION_WATCHER)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_notification_car)
             .setContentTitle(strings.appName)
             .setContentText(text)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -161,7 +162,7 @@ object ParkingNotificationHelper {
         }
 
         return NotificationCompat.Builder(context, CHANNEL_CAR_CONNECTION_WATCHER)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_notification_car)
             .setContentTitle(strings.appName)
             .setContentText(text)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -225,7 +226,7 @@ object ParkingNotificationHelper {
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_PARKING_ALERTS)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_notification_car)
             .setContentTitle(title)
             .setContentText(addressText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(addressText))
@@ -284,7 +285,7 @@ object ParkingNotificationHelper {
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_PARKING_ALERTS)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_notification_car)
             .setContentTitle(displayTitle)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))

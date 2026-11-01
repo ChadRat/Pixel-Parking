@@ -339,14 +339,26 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     private val _showWhatsNew = MutableStateFlow(false)
     val showWhatsNew: StateFlow<Boolean> = _showWhatsNew.asStateFlow()
 
-    private val _showBackgroundAutoSaveSetup = MutableStateFlow(false)
-    val showBackgroundAutoSaveSetup: StateFlow<Boolean> = _showBackgroundAutoSaveSetup.asStateFlow()
 
     private val _whatsNewMessage = MutableStateFlow(com.example.util.WhatsNewManager.CURRENT_MESSAGE)
     val whatsNewMessage: StateFlow<String> = _whatsNewMessage.asStateFlow()
 
     private val _alarmSoundTitle = MutableStateFlow(com.example.util.AlarmSoundHelper.getAlarmTitle(application))
     val alarmSoundTitle: StateFlow<String> = _alarmSoundTitle.asStateFlow()
+
+    private val _gpsSignalErrorInfo = MutableStateFlow<GpsSignalErrorInfo?>(null)
+    val gpsSignalErrorInfo: StateFlow<GpsSignalErrorInfo?> = _gpsSignalErrorInfo.asStateFlow()
+
+    fun dismissGpsSignalErrorDialog() {
+        _gpsSignalErrorInfo.value = null
+    }
+
+    private val _isEditSpotSheetOpen = MutableStateFlow(false)
+    val isEditSpotSheetOpen: StateFlow<Boolean> = _isEditSpotSheetOpen.asStateFlow()
+
+    fun setEditSpotSheetOpen(isOpen: Boolean) {
+        _isEditSpotSheetOpen.value = isOpen
+    }
 
     private var timerJob: kotlinx.coroutines.Job? = null
 
@@ -487,12 +499,6 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             activeSpot.collect { spot ->
                 wearDataLayerBridge.syncParkingSpot(spot)
-                if (!isInitialCollection && spot != null && spot.id != previousActiveSpotId && spot.isAutoSaved) {
-                    stopCompass()
-                    if (_selectedTab.value == AppTab.COMPASS_RADAR) {
-                        _selectedTab.value = AppTab.DASHBOARD
-                    }
-                }
                 isInitialCollection = false
                 previousActiveSpotId = spot?.id
             }
@@ -735,12 +741,13 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         note: String = "",
         customLat: Double? = null,
         customLng: Double? = null,
-        customAddress: String? = null
+        customAddress: String? = null,
+        forceSaveAnyway: Boolean = false
     ) {
         viewModelScope.launch {
             _isGpsRefreshing.value = true
             val loc = if (customLat != null && customLng != null) {
-                null
+                _currentLocation.value
             } else {
                 _currentLocation.value ?: LocationHelper.getCurrentLocation(getApplication())
             }
@@ -749,6 +756,15 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
 
             if (lat == null || lng == null) {
                 _isGpsRefreshing.value = false
+                _gpsSignalErrorInfo.value = GpsSignalErrorInfo(
+                    type = GpsSignalErrorType.NO_SIGNAL,
+                    spotName = spotName,
+                    floorLevel = floorLevel,
+                    note = note,
+                    customLat = customLat,
+                    customLng = customLng,
+                    customAddress = customAddress
+                )
                 withContext(Dispatchers.Main) {
                     com.example.notification.ParkingNotificationHelper.showSystemNotification(
                         getApplication(),
@@ -760,7 +776,29 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
             }
 
             val alt = loc?.altitude ?: 0.0
-            val accuracy = loc?.accuracy ?: 0f
+            val accuracy = if (customLat != null && (loc == null || customLat != loc.latitude)) {
+                0f
+            } else {
+                loc?.accuracy ?: 0f
+            }
+
+            // Inform user via popup if signal is weak (> 65m accuracy) unless bypassed
+            if (!forceSaveAnyway && accuracy > 65f) {
+                _isGpsRefreshing.value = false
+                _gpsSignalErrorInfo.value = GpsSignalErrorInfo(
+                    type = GpsSignalErrorType.WEAK_SIGNAL,
+                    accuracyMeters = accuracy,
+                    spotName = spotName,
+                    floorLevel = floorLevel,
+                    note = note,
+                    customLat = customLat,
+                    customLng = customLng,
+                    customAddress = customAddress
+                )
+                return@launch
+            }
+
+            _gpsSignalErrorInfo.value = null
 
             val address = if (!customAddress.isNullOrBlank()) {
                 customAddress
@@ -859,9 +897,9 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setActiveNavigationTarget(spot: ParkingSpot) {
+        selectTab(AppTab.COMPASS_RADAR)
         viewModelScope.launch {
             repository.setActiveSpot(spot.id)
-            _selectedTab.value = AppTab.COMPASS_RADAR
             startCompass()
             withContext(Dispatchers.Main) {
                 val targetName = spot.spotName.ifBlank { currentStrings.parkedVehicle }
@@ -940,11 +978,14 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun clearHistory() {
+    fun clearHistory(keepPinned: Boolean = true) {
         viewModelScope.launch {
-            repository.clearHistory()
-            _pinnedSpotIds.value = emptySet()
-            prefs.edit().remove("pinned_spot_ids").apply()
+            val pinned = if (keepPinned) _pinnedSpotIds.value.toList() else emptyList()
+            repository.clearHistory(pinned)
+            if (!keepPinned) {
+                _pinnedSpotIds.value = emptySet()
+                prefs.edit().remove("pinned_spot_ids").apply()
+            }
         }
     }
 
@@ -1898,13 +1939,6 @@ class ParkingViewModel(application: Application) : AndroidViewModel(application)
         com.example.util.WhatsNewManager.markMessageSeen(getApplication(), _whatsNewMessage.value)
     }
 
-    fun showBackgroundAutoSaveSetupSheet() {
-        _showBackgroundAutoSaveSetup.value = true
-    }
-
-    fun dismissBackgroundAutoSaveSetupSheet() {
-        _showBackgroundAutoSaveSetup.value = false
-    }
 
     fun setDeveloperWhatsNewMessage(newMsg: String) {
         _whatsNewMessage.value = newMsg

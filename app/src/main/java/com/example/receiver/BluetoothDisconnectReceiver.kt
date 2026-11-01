@@ -289,10 +289,9 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                             it.deviceType == "Car" || hasVehicleKeywords(it.name) || hasVehicleKeywords(it.originalName)
                         }
                     } else null
-                    ?: if (allDevices.size == 1) allDevices.first() else null
 
                     if (candidateCar != null) {
-                        Log.d(TAG, "No vehicle was explicitly toggled, auto-monitoring '${candidateCar.name}' for disconnect auto-park.")
+                        Log.d(TAG, "Auto-monitoring '${candidateCar.name}' for disconnect auto-park.")
                         repository.setDeviceMonitored(candidateCar.address, true)
                         allMonitored = listOf(candidateCar.copy(isMonitoredCar = true))
                     } else if (hasVehicleKeywords(rawName)) {
@@ -300,20 +299,6 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                             address = rawAddress ?: "00:00:00:00:00:00",
                             name = rawName ?: "Car Bluetooth",
                             originalName = rawName ?: "Car Bluetooth",
-                            deviceType = "Car",
-                            isMonitoredCar = true,
-                            lastConnectedTimestamp = System.currentTimeMillis()
-                        )
-                        repository.registerBluetoothDevice(newCar, setAsPrimary = true)
-                        allMonitored = listOf(newCar)
-                    } else {
-                        val fallbackName = rawName ?: "Car Bluetooth"
-                        val fallbackAddress = rawAddress ?: "00:00:00:00:00:00"
-                        Log.d(TAG, "No car device explicitly selected, auto-registering '$fallbackName' ($fallbackAddress) for auto-park.")
-                        val newCar = BluetoothCarDevice(
-                            address = fallbackAddress,
-                            name = fallbackName,
-                            originalName = fallbackName,
                             deviceType = "Car",
                             isMonitoredCar = true,
                             lastConnectedTimestamp = System.currentTimeMillis()
@@ -341,50 +326,44 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                             isMonitoredCar = true
                         )
                 } else if (!targetAddress.isNullOrBlank() || !targetName.isNullOrBlank()) {
-                    // Physical device disconnect: match monitored device, or fallback to watched car / sole monitored car
-                    repository.findMatchingMonitoredDevice(targetAddress, targetName)
-                        ?: if (com.example.service.AutoParkLocationService.isWatching &&
-                            !com.example.service.AutoParkLocationService.watchedCarAddress.isNullOrBlank()
-                        ) {
-                            repository.getDeviceByAddress(com.example.service.AutoParkLocationService.watchedCarAddress!!)
-                        } else null
-                        ?: if (allMonitored.size == 1) {
-                            allMonitored.first()
-                        } else null
-                } else if (allMonitored.size == 1) {
-                    allMonitored.first()
-                } else {
-                    // Physical disconnect with null/empty extras (common on Android 12+ ACL broadcasts)
-                    if (com.example.service.AutoParkLocationService.isWatching &&
-                        !com.example.service.AutoParkLocationService.watchedCarAddress.isNullOrBlank()
+                    // Physical device disconnect: MUST match a monitored vehicle!
+                    // Do NOT fallback to sole monitored car if an unrelated device (smartwatch, headphones) disconnected!
+                    val matchedMonitored = repository.findMatchingMonitoredDevice(targetAddress, targetName)
+                    if (matchedMonitored != null) {
+                        matchedMonitored
+                    } else if (com.example.service.AutoParkLocationService.isWatching &&
+                        !com.example.service.AutoParkLocationService.watchedCarAddress.isNullOrBlank() &&
+                        (targetAddress.isNullOrBlank() || targetAddress.equals(com.example.service.AutoParkLocationService.watchedCarAddress, ignoreCase = true))
                     ) {
                         repository.getDeviceByAddress(com.example.service.AutoParkLocationService.watchedCarAddress!!)
                     } else {
-                        allMonitored.maxByOrNull { it.lastConnectedTimestamp }
-                            ?: allMonitored.firstOrNull()
+                        // Unrelated Bluetooth device disconnected (e.g. smartwatch, earbuds). Ignore completely!
+                        null
                     }
+                } else {
+                    // Disconnect event with no target device info (e.g., Bluetooth turned off completely on phone)
+                    if (isBtTurningOff) {
+                        if (com.example.service.AutoParkLocationService.isWatching &&
+                            !com.example.service.AutoParkLocationService.watchedCarAddress.isNullOrBlank()
+                        ) {
+                            repository.getDeviceByAddress(com.example.service.AutoParkLocationService.watchedCarAddress!!)
+                        } else if (allMonitored.size == 1) {
+                            allMonitored.first()
+                        } else {
+                            allMonitored.maxByOrNull { it.lastConnectedTimestamp }
+                        }
+                    } else null
                 }
 
-                // If not resolved, fallback to watched car, sole monitored car, or most recently connected monitored car
-                val effectiveVehicle = resolvedVehicle
-                    ?: if (com.example.service.AutoParkLocationService.isWatching &&
-                        !com.example.service.AutoParkLocationService.watchedCarAddress.isNullOrBlank()
-                    ) {
-                        repository.getDeviceByAddress(com.example.service.AutoParkLocationService.watchedCarAddress!!)
-                    } else null
-                    ?: if (allMonitored.size == 1) allMonitored.first() else null
-                    ?: allMonitored.maxByOrNull { it.lastConnectedTimestamp }
-                    ?: allMonitored.firstOrNull()
-
-                if (!isSimulatedDisconnect && effectiveVehicle == null) {
+                if (!isSimulatedDisconnect && resolvedVehicle == null) {
                     Log.d(
                         TAG,
-                        "Ignored disconnect: device ($targetAddress, $targetName) is not a selected car in the BT car menu."
+                        "Ignored disconnect: disconnected device ($targetAddress, $targetName) is not a monitored car."
                     )
                     return@launch
                 }
 
-                val targetVehicle = effectiveVehicle ?: BluetoothCarDevice(
+                val targetVehicle = resolvedVehicle ?: BluetoothCarDevice(
                     name = targetName ?: "Developer Test Car",
                     originalName = targetName ?: "Developer Test Car",
                     address = targetAddress ?: "AA:BB:CC:DD:EE:FF",
@@ -473,6 +452,27 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                     } else {
                         Log.w(TAG, "No valid fresh location fix available for auto-park. Aborting auto-save to avoid saving previous/incorrect location.")
                         return@withTimeoutOrNull
+                    }
+
+                    // In-Transit Motion Safeguard:
+                    // If vehicle is moving at driving speed (>= 2.5 m/s ~ 9 km/h), user is actively driving.
+                    if (!isSimulatedDisconnect && location.hasSpeed() && location.speed >= 2.5f) {
+                        Log.w(TAG, "Aborting auto-park: vehicle is moving at driving speed (${location.speed} m/s).")
+                        return@withTimeoutOrNull
+                    }
+
+                    // Red-Light & Profile-Pause Connection Safeguard:
+                    // If the car device is STILL connected to Bluetooth after location acquisition delay,
+                    // abort auto-save. This happens when an audio sub-profile (e.g. A2DP/Headset) temporarily pauses
+                    // or resets at a red light / during engine auto start-stop while the phone remains connected.
+                    if (!isSimulatedDisconnect && effectiveDeviceAddress.isNotBlank() && !effectiveDeviceAddress.startsWith("AA:BB:CC")) {
+                        if (BluetoothDeviceHelper.isDeviceConnected(context, effectiveDeviceAddress)) {
+                            Log.w(
+                                TAG,
+                                "Aborting auto-park: vehicle '$effectiveDeviceAddress' is still connected to Bluetooth. Likely audio profile pause or start-stop at a red light."
+                            )
+                            return@withTimeoutOrNull
+                        }
                     }
 
                     // Underground Parking Safeguard Check:
@@ -583,13 +583,14 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                             }
                         }
                     }
+
+                    try {
+                        com.example.service.AutoParkLocationService.stopWatching(context)
+                    } catch (_: Throwable) {}
                 }
             } catch (e: Throwable) {
                 Log.e(TAG, "Error during auto-park bluetooth disconnect handling", e)
             } finally {
-                try {
-                    com.example.service.AutoParkLocationService.stopWatching(context)
-                } catch (_: Throwable) {}
                 if (acquiredProcessingLock) {
                     resetProcessingState()
                 }

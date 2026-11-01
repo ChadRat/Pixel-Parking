@@ -3,9 +3,6 @@ package com.example.wear
 import android.content.Context
 import android.util.Log
 import com.example.data.entity.ParkingSpot
-import com.google.android.gms.common.GoogleApiAvailability
-import com.google.android.gms.common.api.ApiException
-import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CoroutineScope
@@ -13,7 +10,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import java.util.concurrent.atomic.AtomicBoolean
 
 class WearDataLayerBridge private constructor(private val context: Context) {
 
@@ -21,10 +17,6 @@ class WearDataLayerBridge private constructor(private val context: Context) {
     private val dataClient by lazy { Wearable.getDataClient(context) }
     private val messageClient by lazy { Wearable.getMessageClient(context) }
     private val nodeClient by lazy { Wearable.getNodeClient(context) }
-
-    // Cached flag to avoid redundant failed calls on devices without Wear OS / Play Services Wear support
-    private val isWearApiAvailable = AtomicBoolean(true)
-    private val availabilityChecked = AtomicBoolean(false)
 
     companion object {
         private const val TAG = "WearDataLayerBridge"
@@ -45,35 +37,10 @@ class WearDataLayerBridge private constructor(private val context: Context) {
     }
 
     /**
-     * Checks if Wearable API is available on this device.
-     */
-    private suspend fun checkWearableAvailability(): Boolean {
-        if (availabilityChecked.get()) {
-            return isWearApiAvailable.get()
-        }
-
-        return try {
-            GoogleApiAvailability.getInstance().checkApiAvailability(dataClient).await()
-            isWearApiAvailable.set(true)
-            availabilityChecked.set(true)
-            true
-        } catch (e: Exception) {
-            isWearApiAvailable.set(false)
-            availabilityChecked.set(true)
-            Log.i(TAG, "Wearable.API is not available on this device (no Wear OS companion/service paired). Wear DataLayer sync disabled.")
-            false
-        }
-    }
-
-    /**
      * Syncs the current active parking spot coordinates and metadata to Wear OS via DataClient.
      */
     fun syncParkingSpot(spot: ParkingSpot?) {
         scope.launch {
-            if (!checkWearableAvailability()) {
-                return@launch
-            }
-
             try {
                 val putDataMapReq = PutDataMapRequest.create(PATH_PARKING_SPOT).apply {
                     val isActive = spot != null && spot.isActive
@@ -95,13 +62,6 @@ class WearDataLayerBridge private constructor(private val context: Context) {
                 val putDataReq = putDataMapReq.asPutDataRequest().setUrgent()
                 dataClient.putDataItem(putDataReq).await()
                 Log.d(TAG, "Successfully synced parking spot to Wear DataLayer: active=${spot?.isActive}, lat=${spot?.latitude}, lng=${spot?.longitude}")
-            } catch (e: ApiException) {
-                if (e.statusCode == CommonStatusCodes.API_NOT_CONNECTED || e.statusCode == 17 /* API_UNAVAILABLE */) {
-                    isWearApiAvailable.set(false)
-                    Log.i(TAG, "Wearable.API unavailable on this device (${e.statusCode}). Suppressing further attempts.")
-                } else {
-                    Log.w(TAG, "Wear OS sync API exception: ${e.message}")
-                }
             } catch (e: Exception) {
                 Log.w(TAG, "Could not sync parking spot to Wear OS DataLayer: ${e.message}")
             }
@@ -118,11 +78,7 @@ class WearDataLayerBridge private constructor(private val context: Context) {
         isAligned: Boolean,
         distanceCoveredProgress: Float = 0f
     ) {
-        if (!isWearApiAvailable.get()) return
-
         scope.launch {
-            if (!checkWearableAvailability()) return@launch
-
             try {
                 val nodes = nodeClient.connectedNodes.await()
                 if (nodes.isEmpty()) return@launch
@@ -130,10 +86,6 @@ class WearDataLayerBridge private constructor(private val context: Context) {
                 val payload = "$distanceMeters,$targetBearing,$relativeArrowAngle,${if (isAligned) 1 else 0},$distanceCoveredProgress".toByteArray(Charsets.UTF_8)
                 nodes.forEach { node ->
                     messageClient.sendMessage(node.id, PATH_TELEMETRY, payload)
-                }
-            } catch (e: ApiException) {
-                if (e.statusCode == CommonStatusCodes.API_NOT_CONNECTED || e.statusCode == 17) {
-                    isWearApiAvailable.set(false)
                 }
             } catch (e: Exception) {
                 Log.d(TAG, "Telemetry sync skipped: ${e.message}")
@@ -146,8 +98,6 @@ class WearDataLayerBridge private constructor(private val context: Context) {
      */
     fun syncCrownPosition(crownOnRight: Boolean) {
         scope.launch {
-            if (!checkWearableAvailability()) return@launch
-
             // 1. Send instant direct message to all active nodes for real-time immediate update
             try {
                 val nodes = nodeClient.connectedNodes.await()

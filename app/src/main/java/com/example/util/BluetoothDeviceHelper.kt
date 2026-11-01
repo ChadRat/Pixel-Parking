@@ -57,8 +57,8 @@ object BluetoothDeviceHelper {
      */
     @SuppressLint("MissingPermission")
     fun isDeviceConnected(context: Context, address: String): Boolean {
-        // Custom created virtual paired devices or testing fallback
-        if (address.startsWith("AA:BB:CC")) return true
+        // Custom created virtual paired devices or blank address should not be considered connected hardware
+        if (address.isBlank() || address.startsWith("AA:BB:CC")) return false
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val permission = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT)
@@ -99,6 +99,26 @@ object BluetoothDeviceHelper {
 
             false
         } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Checks if any monitored car Bluetooth device is currently connected to the phone.
+     * Prevents false triggers while stopped at red lights or idling in traffic.
+     */
+    fun isAnyCarBluetoothConnected(context: Context): Boolean {
+        return try {
+            if (com.example.service.AutoParkLocationService.isWatching) {
+                val watchedAddr = com.example.service.AutoParkLocationService.watchedCarAddress
+                if (!watchedAddr.isNullOrBlank() && !watchedAddr.startsWith("AA:BB:CC") && isDeviceConnected(context, watchedAddr)) {
+                    return true
+                }
+            }
+            val db = com.example.data.database.AppDatabase.getDatabase(context)
+            val monitored = db.bluetoothCarDeviceDao().getMonitoredDevicesBlocking()
+            monitored.any { !it.address.startsWith("AA:BB:CC") && isDeviceConnected(context, it.address) }
+        } catch (_: Throwable) {
             false
         }
     }

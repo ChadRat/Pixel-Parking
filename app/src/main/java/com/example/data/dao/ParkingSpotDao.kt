@@ -45,4 +45,7 @@ interface ParkingSpotDao {
 
     @Query("DELETE FROM parking_spots")
     suspend fun clearAllSpots()
+
+    @Query("DELETE FROM parking_spots WHERE id NOT IN (:excludedIds)")
+    suspend fun clearSpotsExcept(excludedIds: List<Long>)
 }

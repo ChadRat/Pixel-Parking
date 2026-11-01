@@ -17,7 +17,7 @@ android {
     applicationId = "com.PixelParking.app"
     minSdk = 24
     targetSdk = 36
-    versionCode = 65
+    versionCode = 67
     versionName = "0.7"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -30,24 +30,30 @@ android {
       storePassword = System.getenv("STORE_PASSWORD") ?: "uploadpassword"
       keyAlias = "upload"
       keyPassword = System.getenv("KEY_PASSWORD") ?: "uploadpassword"
+      enableV1Signing = true
+      enableV2Signing = true
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
       storePassword = "android"
       keyAlias = "androiddebugkey"
       keyPassword = "android"
+      enableV1Signing = true
+      enableV2Signing = true
     }
   }
 
   buildTypes {
     release {
+      initWith(getByName("debug"))
       isDebuggable = false
-      isCrunchPngs = false
+      signingConfig = signingConfigs.getByName("debugConfig")
       isMinifyEnabled = false
-      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
     }
-    debug { signingConfig = signingConfigs.getByName("debugConfig") }
+    debug {
+      signingConfig = signingConfigs.getByName("debugConfig")
+      isDebuggable = false
+    }
   }
 
   lint {
@@ -148,31 +154,71 @@ dependencies {
   // "ksp"(libs.moshi.kotlin.codegen)
 }
 
-// Ensure wear-debug.apk is copied into assets when wear is assembled
-val copyWearApkToAssets = tasks.register<Copy>("copyWearApkToAssets") {
-  val wearApk = file("${rootDir}/wear/build/outputs/apk/debug/wear-debug.apk")
-  if (wearApk.exists()) {
-    from(wearApk)
-    into(layout.projectDirectory.dir("src/main/assets"))
+// Ensure latest wear-release.apk is copied into assets
+val copyWearReleaseApkToAssets = tasks.register("copyWearReleaseApkToAssets") {
+  doLast {
+    val candidates = listOf(
+      file("${rootDir}/wear-release.apk"),
+      file("${rootDir}/wear/build/outputs/apk/release/wear-release.apk")
+    )
+    val src = candidates.firstOrNull { it.exists() && it.length() > 0 }
+    if (src != null) {
+      val targetDir = file("src/main/assets")
+      targetDir.mkdirs()
+      src.copyTo(file("src/main/assets/wear-release.apk"), overwrite = true)
+    }
   }
+}
+
+tasks.matching { (it.name.startsWith("merge") || it.name.startsWith("generate")) && it.name.endsWith("Assets") }.configureEach {
+  dependsOn(copyWearReleaseApkToAssets)
 }
 
 val syncAppReleaseApkToRoot = tasks.register("syncAppReleaseApkToRoot") {
   doLast {
     val candidates = listOf(
       file("build/outputs/apk/release/app-release.apk"),
-      file("build/intermediates/apk/release/app-release-unsigned.apk"),
       file("build/intermediates/apk/release/app-release.apk")
     )
     val src = candidates.firstOrNull { it.exists() && it.length() > 0 }
     if (src != null) {
-      src.copyTo(file("${rootDir}/app-release.apk"), overwrite = true)
+      src.copyTo(file("${rootDir}/PixelParking-release.apk"), overwrite = true)
+      src.copyTo(file("${rootDir}/release.apk"), overwrite = true)
+      val buildOutputsDir = file("${rootDir}/.build-outputs")
+      if (buildOutputsDir.exists()) {
+        src.copyTo(file("${rootDir}/.build-outputs/app-release.apk"), overwrite = true)
+        src.copyTo(file("${rootDir}/.build-outputs/release.apk"), overwrite = true)
+      }
+    }
+  }
+}
+
+val syncAppDebugApkToRoot = tasks.register("syncAppDebugApkToRoot") {
+  doLast {
+    val candidates = listOf(
+      file("build/outputs/apk/debug/app-debug.apk"),
+      file("build/intermediates/apk/debug/app-debug.apk")
+    )
+    val src = candidates.firstOrNull { it.exists() && it.length() > 0 }
+    if (src != null) {
+      src.copyTo(file("${rootDir}/PixelParking-debug.apk"), overwrite = true)
+      src.copyTo(file("${rootDir}/app-debug.apk"), overwrite = true)
+      src.copyTo(file("${rootDir}/debug.apk"), overwrite = true)
+      val buildOutputsDir = file("${rootDir}/.build-outputs")
+      if (buildOutputsDir.exists()) {
+        src.copyTo(file("${rootDir}/.build-outputs/app-debug.apk"), overwrite = true)
+        src.copyTo(file("${rootDir}/.build-outputs/debug.apk"), overwrite = true)
+      }
     }
   }
 }
 
 tasks.matching { it.name == "assembleRelease" || it.name == "packageRelease" }.configureEach {
   finalizedBy(syncAppReleaseApkToRoot)
+}
+
+tasks.matching { it.name == "assembleDebug" || it.name == "packageDebug" }.configureEach {
+  finalizedBy(syncAppDebugApkToRoot)
 }
 
 

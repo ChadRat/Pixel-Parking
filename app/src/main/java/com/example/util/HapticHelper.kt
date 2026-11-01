@@ -96,14 +96,39 @@ object HapticHelper {
                 vibrator.vibrate(
                     VibrationEffect.startComposition()
                         .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1.0f, 0)
-                        .addPrimitive(VibrationEffect.Composition.PRIMITIVE_QUICK_RISE, 1.0f, 0)
                         .compose()
                 )
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(45, 255))
+                vibrator.vibrate(VibrationEffect.createOneShot(20, 200))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(45)
+                vibrator.vibrate(20)
+            }
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Single crisp tactile click for Floor Level buttons without any secondary woop or rise.
+     */
+    fun performFloorButtonClick(context: Context) {
+        val vibrator = getVibrator(context) ?: return
+        if (!vibrator.hasVibrator()) return
+        cancelVibration(context)
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_CLICK)
+            ) {
+                val comp = VibrationEffect.startComposition()
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.90f, 0)
+                vibrator.vibrate(comp.compose())
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(18, 200))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(18)
             }
         } catch (_: Exception) {}
     }
@@ -364,6 +389,54 @@ object HapticHelper {
             } else {
                 @Suppress("DEPRECATION")
                 vibrator.vibrate(longArrayOf(365, 26, 131, 26, 139, 26, 181, 26, 270, 26, 462, 28, 328, 16), -1)
+            }
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Mechanical Quarter-Turn Haptic (for History Search button 1/4 rotation & expand/retract):
+     * Exactly three tactile clicks timed in an organic sequence matching takeoff, mid-turn, and lock-in.
+     */
+    fun performSearchQuarterTurnHaptic(context: Context) {
+        val vibrator = getVibrator(context) ?: return
+        if (!vibrator.hasVibrator()) return
+        cancelVibration(context)
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                vibrator.areAllPrimitivesSupported(
+                    VibrationEffect.Composition.PRIMITIVE_CLICK
+                )
+            ) {
+                val comp = VibrationEffect.startComposition()
+                // Three clicks all together, organically timed across the slower 800ms rotation:
+                // 1. Initial takeoff click as the squircle begins rotating (~60ms)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.80f, 60)
+                // 2. Mid-turn apex click as it sweeps through the 45° mark (~320ms interval = 380ms)
+                comp.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.95f, 320)
+                // 3. Final tactile tick/click as it locks into the 90° orientation (~360ms interval = 740ms)
+                val finalPrimitive = if (vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK)) {
+                    VibrationEffect.Composition.PRIMITIVE_TICK
+                } else {
+                    VibrationEffect.Composition.PRIMITIVE_CLICK
+                }
+                comp.addPrimitive(finalPrimitive, 1.0f, 360)
+                vibrator.vibrate(comp.compose())
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val timings = longArrayOf(
+                    60, 18,
+                    320, 22,
+                    360, 20
+                )
+                val amplitudes = intArrayOf(
+                    0, 200,
+                    0, 245,
+                    0, 230
+                )
+                vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(longArrayOf(60, 18, 320, 22, 360, 20), -1)
             }
         } catch (_: Exception) {}
     }

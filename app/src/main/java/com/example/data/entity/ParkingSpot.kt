@@ -111,6 +111,13 @@ val ParkingSpot.isUndergroundFallback: Boolean
             note.contains("entrance", ignoreCase = true) ||
             note.contains("Υπόγειο", ignoreCase = true) ||
             floorLevel.contains("Underground", ignoreCase = true) ||
-            floorLevel.contains("Υπόγειο", ignoreCase = true)
+            floorLevel.contains("Υπόγειο", ignoreCase = true) ||
+            spotName.contains("Underground", ignoreCase = true) ||
+            spotName.contains("Υπόγειο", ignoreCase = true) ||
+            bluetoothDeviceAddress == "UNDERGROUND_SAFEGUARD" ||
+            bluetoothDeviceName?.contains("Underground", ignoreCase = true) == true
+
+val ParkingSpot.isUndergroundEntry: Boolean
+    get() = isUndergroundFallback
 
 

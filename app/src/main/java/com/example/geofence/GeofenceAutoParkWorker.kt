@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import com.example.R
 import com.example.data.database.AppDatabase
 import com.example.data.entity.ParkingSpot
 import com.example.data.entity.isBluetoothEntry
@@ -49,7 +50,7 @@ class GeofenceAutoParkWorker(
     override suspend fun getForegroundInfo(): ForegroundInfo {
         ParkingNotificationHelper.createNotificationChannels(context)
         val notification: Notification = NotificationCompat.Builder(context, ParkingNotificationHelper.CHANNEL_PARKING_ALERTS)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_notification_car)
             .setContentTitle("Saving parking location")
             .setContentText("Saving your parked car coordinates...")
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -108,8 +109,8 @@ class GeofenceAutoParkWorker(
         // Passenger Drop-Off Safeguard & Coordinate Staleness Check
         if (!isSimulated) {
             val safeguardPassed = GeofenceManager.verifyPassengerDropOffSafeguard(context, carLat, carLng)
-            if (!safeguardPassed) {
-                Log.w(TAG, "Passenger drop-off safeguard: Rejected false parking trigger (moving ride or stale coordinates).")
+            if (!safeguardPassed || !GeofenceManager.isWalkingAccordingToActivityApi(context)) {
+                Log.w(TAG, "Passenger drop-off / walking safeguard: Rejected parking trigger because Android Activity API does not confirm walking (or stale coordinates).")
                 return Result.failure()
             }
         }

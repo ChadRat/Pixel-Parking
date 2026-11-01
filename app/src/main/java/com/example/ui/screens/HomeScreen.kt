@@ -88,6 +88,7 @@ import com.example.data.entity.isUndergroundFallback
 import com.example.ui.components.CustomFarAwayIcon
 import com.example.ui.components.EditSpotDialog
 import com.example.ui.components.GeofenceIcon
+import com.example.ui.components.UndergroundParkingIcon
 import com.example.ui.components.ParkingMeterWidget
 import com.example.ui.components.ParkingTimerButton
 import androidx.compose.animation.core.animateDpAsState
@@ -216,9 +217,7 @@ fun HomeScreen(
 
         // BACKGROUND RELIABILITY DIAGNOSTIC BANNER (One-tap battery & background location setup)
         item {
-            com.example.ui.components.BackgroundDiagnosticBanner(
-                onOpenSetupSheet = { viewModel.showBackgroundAutoSaveSetupSheet() }
-            )
+            com.example.ui.components.BackgroundDiagnosticBanner()
         }
 
         // MAIN PARKING STATE CARD
@@ -524,13 +523,19 @@ fun RecentSpotItem(
                 val isBt = spot.isBluetoothEntry
                 val isGeo = spot.isGeofenceEntry
                 val isFarAway = spot.isCustomFarAwayEntry
+                val isUnderground = spot.isUndergroundFallback
                 Surface(
                     shape = CircleShape,
-                    color = if (isGeo || isBt || isFarAway) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                    color = if (isUnderground || isGeo || isBt || isFarAway) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        if (isFarAway) {
+                        if (isUnderground) {
+                            UndergroundParkingIcon(
+                                modifier = Modifier.size(22.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        } else if (isFarAway) {
                             CustomFarAwayIcon(
                                 modifier = Modifier.size(22.dp),
                                 tint = MaterialTheme.colorScheme.primary

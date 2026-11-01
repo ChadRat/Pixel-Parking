@@ -15,7 +15,7 @@ import java.io.FileOutputStream
 
 object WearApkManager {
 
-    private const val ASSET_FILE_NAME = "wear-debug.apk"
+    private const val ASSET_FILE_NAME = "wear-release.apk"
     const val DEFAULT_WEAR_APP_VERSION = "1.2"
 
     fun getWearAppVersion(context: Context): String {
@@ -40,7 +40,7 @@ object WearApkManager {
     }
 
     /**
-     * Checks if the wear-debug.apk asset is bundled in the app.
+     * Checks if the wear-release.apk asset is bundled in the app.
      */
     fun isAssetAvailable(context: Context): Boolean {
         return try {

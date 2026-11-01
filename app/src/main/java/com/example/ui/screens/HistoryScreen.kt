@@ -1,8 +1,12 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +32,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -79,9 +96,11 @@ import com.example.data.entity.ParkingSpot
 import com.example.data.entity.isBluetoothEntry
 import com.example.data.entity.isCustomFarAwayEntry
 import com.example.data.entity.isGeofenceEntry
+import com.example.data.entity.isUndergroundFallback
 import com.example.ui.components.CustomFarAwayIcon
 import com.example.ui.components.EditSpotDialog
 import com.example.ui.components.GeofenceIcon
+import com.example.ui.components.UndergroundParkingIcon
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.PixelRed
 import com.example.ui.viewmodel.ParkingViewModel
@@ -102,6 +121,16 @@ fun HistoryScreen(
     val context = LocalContext.current
     val strings = LocalAppStrings.current
     var searchQuery by remember { mutableStateOf("") }
+    var isSearchVisible by remember { mutableStateOf(false) }
+    val isSearchExpanded = isSearchVisible || searchQuery.isNotBlank()
+    val searchButtonRotation by animateFloatAsState(
+        targetValue = if (isSearchExpanded) 90f else 0f,
+        animationSpec = tween(
+            durationMillis = 800,
+            easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)
+        ),
+        label = "search_button_rotation"
+    )
     var showClearDialog by remember { mutableStateOf(false) }
     var editingSpot by remember { mutableStateOf<ParkingSpot?>(null) }
 
@@ -120,6 +149,17 @@ fun HistoryScreen(
         )
     }
 
+    // 30-item windowing to eliminate lagging even with 500+ entries
+    val pageSize = 30
+    val unloadCount = 20
+    var startIndex by remember(searchQuery) { mutableIntStateOf(0) }
+    val totalCount = filteredSpots.size
+    val endIndex = minOf(startIndex + pageSize, totalCount)
+    val windowSpots = remember(filteredSpots, startIndex, endIndex) {
+        if (totalCount == 0) emptyList()
+        else filteredSpots.subList(startIndex.coerceIn(0, totalCount), endIndex.coerceIn(0, totalCount))
+    }
+
     val isSheetOpen = editingSpot != null
     val carBadgeStyle by viewModel.carBadgeStyle.collectAsState()
     val capyVariant by viewModel.capyVariant.collectAsState()
@@ -128,8 +168,47 @@ fun HistoryScreen(
     val showTimerDialog by viewModel.showTimerDialog.collectAsStateWithLifecycle()
 
     val smoothFling = com.example.util.rememberSmoothFlingBehavior()
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+
+    // Sliding window scroll monitor: load next 30, unload top 20 when close to end
+    LaunchedEffect(listState, totalCount) {
+        snapshotFlow {
+            val layoutInfo = listState.layoutInfo
+            val visible = layoutInfo.visibleItemsInfo
+            val lastVisible = visible.lastOrNull()?.index ?: 0
+            val firstVisible = visible.firstOrNull()?.index ?: 0
+            val totalItems = layoutInfo.totalItemsCount
+            Triple(firstVisible, lastVisible, totalItems)
+        }.collect { (firstVisible, lastVisible, totalItems) ->
+            if (totalCount > pageSize) {
+                // User scrolled close enough to end of current batch (within 4 items of bottom)
+                if (lastVisible >= totalItems - 4 && endIndex < totalCount) {
+                    val nextStart = (startIndex + unloadCount).coerceAtMost(maxOf(0, totalCount - pageSize))
+                    if (nextStart > startIndex) {
+                        val shift = nextStart - startIndex
+                        startIndex = nextStart
+                        val curFirst = listState.firstVisibleItemIndex
+                        val curOffset = listState.firstVisibleItemScrollOffset
+                        listState.scrollToItem(maxOf(0, curFirst - shift), curOffset)
+                    }
+                } else if (firstVisible <= 2 && startIndex > 0) {
+                    // User scrolled back near top of current batch
+                    val prevStart = maxOf(0, startIndex - unloadCount)
+                    if (prevStart < startIndex) {
+                        val shift = startIndex - prevStart
+                        startIndex = prevStart
+                        val curFirst = listState.firstVisibleItemIndex
+                        val curOffset = listState.firstVisibleItemScrollOffset
+                        listState.scrollToItem(curFirst + shift, curOffset)
+                    }
+                }
+            }
+        }
+    }
 
     LazyColumn(
+        state = listState,
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
@@ -140,68 +219,187 @@ fun HistoryScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         flingBehavior = smoothFling
     ) {
-        // Header
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = strings.historyTitle,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "${spots.size} ${strings.historySubtitle}",
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+        // Header & Animated Search Bar
+        item(key = "history_header") {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = strings.historyTitle,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (totalCount > pageSize) {
+                                "$totalCount spots (${startIndex + 1}–$endIndex loaded)"
+                            } else {
+                                "${spots.size} ${strings.historySubtitle}"
+                            },
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Small Search Button (squircle shape with well-rounded corners, smaller than the delete button, smooth 1/4 rotation)
+                        Surface(
+                            onClick = {
+                                val nextState = !isSearchVisible
+                                isSearchVisible = nextState
+                                if (!nextState) {
+                                    searchQuery = ""
+                                }
+                                HapticHelper.performSearchQuarterTurnHaptic(context)
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier
+                                .size(28.dp)
+                                .graphicsLayer {
+                                    rotationZ = searchButtonRotation
+                                }
+                                .testTag("toggle_history_search_btn")
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Search Entries",
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .graphicsLayer {
+                                            rotationZ = -searchButtonRotation
+                                        },
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+
+                        if (spots.isNotEmpty()) {
+                            Surface(
+                                onClick = { showClearDialog = true },
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("clear_history_btn")
+                            ) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.DeleteSweep,
+                                        contentDescription = "Clear History",
+                                        modifier = Modifier.size(20.dp),
+                                        tint = PixelRed
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
-                if (spots.isNotEmpty()) {
-                    IconButton(
-                        onClick = { showClearDialog = true },
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .testTag("clear_history_btn")
-                    ) {
-                        Icon(
-                            Icons.Default.DeleteSweep,
-                            contentDescription = "Clear History",
-                            tint = PixelRed
+                // Search Bar smoothly expands downwards and retracts upwards in sync with the 1/4 rotation
+                AnimatedVisibility(
+                    visible = isSearchExpanded,
+                    enter = expandVertically(
+                        animationSpec = tween(durationMillis = 800, easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)),
+                        expandFrom = Alignment.Top
+                    ) + fadeIn(animationSpec = tween(durationMillis = 400)),
+                    exit = shrinkVertically(
+                        animationSpec = tween(durationMillis = 800, easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)),
+                        shrinkTowards = Alignment.Top
+                    ) + fadeOut(animationSpec = tween(durationMillis = 350))
+                ) {
+                    Column {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text(strings.searchSpots) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            trailingIcon = {
+                                if (searchQuery.isNotBlank()) {
+                                    IconButton(onClick = { searchQuery = "" }) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Clear search",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(24.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("history_search_input")
                         )
                     }
                 }
             }
         }
 
-        // Search Bar (Google Pixel Material 3 Expressive)
-        item {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text(strings.searchSpots) },
-                leadingIcon = {
-                    Icon(
-                        Icons.Default.Search,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(24.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("history_search_input")
-            )
+        // Unloaded Earlier Entries Banner
+        if (startIndex > 0) {
+            item(key = "unloaded_banner") {
+                Surface(
+                    onClick = {
+                        coroutineScope.launch {
+                            startIndex = 0
+                            listState.animateScrollToItem(0)
+                        }
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("jump_to_top_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowUp,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "$startIndex older entries unloaded • Tap to jump to top",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
 
         if (filteredSpots.isEmpty()) {
@@ -230,7 +428,7 @@ fun HistoryScreen(
                 }
             }
         } else {
-            items(filteredSpots, key = { it.id }) { spot ->
+            items(windowSpots, key = { it.id }) { spot ->
                 val isPinned = pinnedSpotIds.contains(spot.id)
                 Box(modifier = Modifier.animateItem()) {
                     SwipeableHistorySpotRow(
@@ -245,6 +443,31 @@ fun HistoryScreen(
                     )
                 }
             }
+
+            // Loading Next Entries Indicator
+            if (endIndex < totalCount) {
+                item(key = "loading_more_banner") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Loading next entries ($endIndex of $totalCount)...",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -257,6 +480,7 @@ fun HistoryScreen(
             isTimerRunning = isTimerRunning,
             timerRemainingSeconds = timerRemainingSeconds,
             isTimerOpen = showTimerDialog,
+            viewModel = viewModel,
             onOpenTimer = { viewModel.openParkingTimer() },
             onDismiss = { editingSpot = null },
             onSave = { name, floor, note, customLat, customLng, customAddress ->
@@ -278,63 +502,127 @@ fun HistoryScreen(
     }
 
     if (showClearDialog) {
+        var confirmationInput by remember { mutableStateOf("") }
+        var deletePinned by remember { mutableStateOf(false) }
+        val isConfirmed = confirmationInput.trim().equals("DELETE", ignoreCase = true)
+        val pinnedCount = pinnedSpotIds.size
+
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
             shape = RoundedCornerShape(28.dp),
             title = {
                 Text(
-                    strings.clearAllConfirmTitle,
+                    text = strings.clearAllConfirmTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp
                 )
             },
             text = {
-                Text(
-                    strings.clearAllConfirmMsg,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp
-                )
-            },
-            confirmButton = {
-                val coroutineScope = rememberCoroutineScope()
-                var isPressed by remember { mutableStateOf(false) }
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(
+                        text = strings.clearAllConfirmMsg,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (isPressed) PixelRed.copy(alpha = 0.85f) else PixelRed)
-                        .pointerInput(Unit) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-                                isPressed = true
-                                val holdJob = coroutineScope.launch {
-                                    for (step in 1..6) {
-                                        delay(500L)
-                                        HapticHelper.performHoldStepTick(context)
-                                        if (step == 6) {
-                                            viewModel.clearHistory()
-                                            showClearDialog = false
-                                        }
-                                    }
-                                }
-                                try {
-                                    do {
-                                        val event = awaitPointerEvent()
-                                    } while (event.changes.any { it.pressed })
-                                } finally {
-                                    isPressed = false
-                                    holdJob.cancel()
+                    // Delete Pinned Entries Toggle (Disabled by default)
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PushPin,
+                                    contentDescription = null,
+                                    tint = if (deletePinned) PixelRed else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Delete pinned entries as well",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = if (deletePinned) {
+                                            if (pinnedCount > 0) "All $pinnedCount pinned spot(s) will also be deleted" else "Pinned spots will also be deleted"
+                                        } else {
+                                            if (pinnedCount > 0) "$pinnedCount pinned spot(s) will be preserved" else "Preserves any pinned spots"
+                                        },
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
+                            Switch(
+                                checked = deletePinned,
+                                onCheckedChange = { deletePinned = it },
+                                modifier = Modifier.testTag("toggle_delete_pinned_switch")
+                            )
                         }
-                        .padding(horizontal = 24.dp, vertical = 10.dp)
-                        .testTag("confirm_clear_history_btn"),
-                    contentAlignment = Alignment.Center
+                    }
+
+                    // Confirmation Text Box Requirement: type DELETE
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Type DELETE to confirm:",
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        OutlinedTextField(
+                            value = confirmationInput,
+                            onValueChange = { confirmationInput = it },
+                            placeholder = { Text("DELETE") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = PixelRed,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("delete_all_confirmation_input")
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (isConfirmed) {
+                            viewModel.clearHistory(keepPinned = !deletePinned)
+                            showClearDialog = false
+                            HapticHelper.performHoldStepTick(context)
+                        }
+                    },
+                    enabled = isConfirmed,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = PixelRed,
+                        contentColor = Color.White,
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.testTag("confirm_clear_history_btn")
                 ) {
                     Text(
                         text = strings.clearAll,
-                        color = Color(0xFF000000),
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp
                     )
@@ -536,8 +824,8 @@ fun HistorySpotCardContent(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Circular car or geofence icon
-                // Circular car, geofence, bluetooth, or custom far away icon
+                // Circular car, underground, geofence, bluetooth, or custom far away icon
+                val isUnderground = spot.isUndergroundFallback
                 val isGeo = spot.isGeofenceEntry
                 val isBt = spot.isBluetoothEntry
                 val isFarAway = spot.isCustomFarAwayEntry
@@ -547,7 +835,12 @@ fun HistorySpotCardContent(
                     modifier = Modifier.size(38.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        if (isFarAway) {
+                        if (isUnderground) {
+                            UndergroundParkingIcon(
+                                modifier = Modifier.size(20.dp),
+                                tint = if (spot.isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        } else if (isFarAway) {
                             CustomFarAwayIcon(
                                 modifier = Modifier.size(20.dp),
                                 tint = if (spot.isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface

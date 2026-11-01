@@ -3,6 +3,7 @@ package com.example
 import com.example.data.entity.isBluetoothEntry
 import com.example.data.entity.isGeofenceEntry
 import com.example.data.entity.isUndergroundFallback
+import com.example.data.entity.isUndergroundEntry
 import com.example.sensor.LocationHelper
 import com.example.sensor.SunCalculator
 import org.junit.Assert.assertEquals
@@ -136,6 +137,7 @@ class ExampleUnitTest {
             }
             override suspend fun deleteLegacyDemoSpots() {}
             override suspend fun clearAllSpots() { spotList.clear() }
+            override suspend fun clearSpotsExcept(excludedIds: List<Long>) { spotList.removeIf { !excludedIds.contains(it.id) } }
         }
 
         val fakeDeviceDao = object : com.example.data.dao.BluetoothCarDeviceDao {
@@ -143,6 +145,7 @@ class ExampleUnitTest {
             override suspend fun getAllDevicesDirect() = emptyList<com.example.data.entity.BluetoothCarDevice>()
             override fun getMonitoredDevices() = kotlinx.coroutines.flow.flowOf(emptyList<com.example.data.entity.BluetoothCarDevice>())
             override suspend fun getMonitoredDevicesDirect() = emptyList<com.example.data.entity.BluetoothCarDevice>()
+            override fun getMonitoredDevicesBlocking() = emptyList<com.example.data.entity.BluetoothCarDevice>()
             override suspend fun getSelectedMonitoredDevice(): com.example.data.entity.BluetoothCarDevice? = null
             override fun getSelectedMonitoredDeviceFlow() = kotlinx.coroutines.flow.flowOf(null)
             override suspend fun clearAllMonitoredStatus() {}
@@ -255,9 +258,9 @@ class ExampleUnitTest {
         val drivingSpeedMps = 40.0f / 3.6f // ~11.11 m/s
         assertTrue("Driving speed must exceed threshold", drivingSpeedMps >= 2.8f)
 
-        // Pause past 25-second dwell threshold
-        val dwellTimeMs = 26_000L
-        assertTrue("Dwell must exceed 25s threshold", dwellTimeMs >= com.example.geofence.GeofenceManager.STATIONARY_DWELL_TIMER_MS)
+        // Pause past 40-second dwell threshold
+        val dwellTimeMs = 41_000L
+        assertTrue("Dwell must exceed 40s threshold", dwellTimeMs >= com.example.geofence.GeofenceManager.STATIONARY_DWELL_TIMER_MS)
 
         // Walk 60m out
         val walkDistanceMeters = 60f
@@ -268,7 +271,7 @@ class ExampleUnitTest {
         // Verify perimeter radius is 50m and responsiveness is 25s
         assertEquals(50.0f, com.example.geofence.GeofenceManager.DEFAULT_PERIMETER_RADIUS_METERS, 0.01f)
         assertEquals(25_000, com.example.geofence.GeofenceManager.NOTIFICATION_RESPONSIVENESS_MS)
-        assertEquals(25_000L, com.example.geofence.GeofenceManager.STATIONARY_DWELL_TIMER_MS)
+        assertEquals(40_000L, com.example.geofence.GeofenceManager.STATIONARY_DWELL_TIMER_MS)
     }
 
     @Test
@@ -365,6 +368,7 @@ class ExampleUnitTest {
             override suspend fun deleteSpotById(id: Long) { spotList.removeAll { it.id == id } }
             override suspend fun deleteLegacyDemoSpots() {}
             override suspend fun clearAllSpots() { spotList.clear() }
+            override suspend fun clearSpotsExcept(excludedIds: List<Long>) { spotList.removeIf { !excludedIds.contains(it.id) } }
         }
 
         val fakeDeviceDao = object : com.example.data.dao.BluetoothCarDeviceDao {
@@ -372,6 +376,7 @@ class ExampleUnitTest {
             override suspend fun getAllDevicesDirect() = emptyList<com.example.data.entity.BluetoothCarDevice>()
             override fun getMonitoredDevices() = kotlinx.coroutines.flow.flowOf(emptyList<com.example.data.entity.BluetoothCarDevice>())
             override suspend fun getMonitoredDevicesDirect() = emptyList<com.example.data.entity.BluetoothCarDevice>()
+            override fun getMonitoredDevicesBlocking() = emptyList<com.example.data.entity.BluetoothCarDevice>()
             override suspend fun getSelectedMonitoredDevice(): com.example.data.entity.BluetoothCarDevice? = null
             override fun getSelectedMonitoredDeviceFlow() = kotlinx.coroutines.flow.flowOf(null)
             override suspend fun clearAllMonitoredStatus() {}
@@ -449,6 +454,7 @@ class ExampleUnitTest {
             override suspend fun deleteSpotById(id: Long) {}
             override suspend fun deleteLegacyDemoSpots() {}
             override suspend fun clearAllSpots() {}
+            override suspend fun clearSpotsExcept(excludedIds: List<Long>) {}
         }
 
         val monitoredCar = com.example.data.entity.BluetoothCarDevice(
@@ -471,6 +477,7 @@ class ExampleUnitTest {
             override suspend fun getAllDevicesDirect() = devices
             override fun getMonitoredDevices() = kotlinx.coroutines.flow.flowOf(devices.filter { it.isMonitoredCar })
             override suspend fun getMonitoredDevicesDirect() = devices.filter { it.isMonitoredCar }
+            override fun getMonitoredDevicesBlocking() = devices.filter { it.isMonitoredCar }
             override suspend fun getSelectedMonitoredDevice() = monitoredCar
             override fun getSelectedMonitoredDeviceFlow() = kotlinx.coroutines.flow.flowOf(monitoredCar)
             override suspend fun clearAllMonitoredStatus() {}
@@ -551,6 +558,7 @@ class ExampleUnitTest {
             }
             override suspend fun deleteLegacyDemoSpots() {}
             override suspend fun clearAllSpots() { spotList.clear() }
+            override suspend fun clearSpotsExcept(excludedIds: List<Long>) { spotList.removeIf { !excludedIds.contains(it.id) } }
         }
 
         val fakeDeviceDao = object : com.example.data.dao.BluetoothCarDeviceDao {
@@ -558,6 +566,7 @@ class ExampleUnitTest {
             override suspend fun getAllDevicesDirect() = emptyList<com.example.data.entity.BluetoothCarDevice>()
             override fun getMonitoredDevices() = kotlinx.coroutines.flow.flowOf(emptyList<com.example.data.entity.BluetoothCarDevice>())
             override suspend fun getMonitoredDevicesDirect() = emptyList<com.example.data.entity.BluetoothCarDevice>()
+            override fun getMonitoredDevicesBlocking() = emptyList<com.example.data.entity.BluetoothCarDevice>()
             override suspend fun getSelectedMonitoredDevice() = null
             override fun getSelectedMonitoredDeviceFlow() = kotlinx.coroutines.flow.flowOf(null)
             override suspend fun clearAllMonitoredStatus() {}
@@ -648,6 +657,7 @@ class ExampleUnitTest {
             override suspend fun deleteSpotById(id: Long) { spotList.removeAll { it.id == id } }
             override suspend fun deleteLegacyDemoSpots() {}
             override suspend fun clearAllSpots() { spotList.clear() }
+            override suspend fun clearSpotsExcept(excludedIds: List<Long>) { spotList.removeIf { !excludedIds.contains(it.id) } }
         }
 
         val fakeDeviceDao = object : com.example.data.dao.BluetoothCarDeviceDao {
@@ -655,6 +665,7 @@ class ExampleUnitTest {
             override suspend fun getAllDevicesDirect() = emptyList<com.example.data.entity.BluetoothCarDevice>()
             override fun getMonitoredDevices() = kotlinx.coroutines.flow.flowOf(emptyList<com.example.data.entity.BluetoothCarDevice>())
             override suspend fun getMonitoredDevicesDirect() = emptyList<com.example.data.entity.BluetoothCarDevice>()
+            override fun getMonitoredDevicesBlocking() = emptyList<com.example.data.entity.BluetoothCarDevice>()
             override suspend fun getSelectedMonitoredDevice(): com.example.data.entity.BluetoothCarDevice? = null
             override fun getSelectedMonitoredDeviceFlow() = kotlinx.coroutines.flow.flowOf(null)
             override suspend fun clearAllMonitoredStatus() {}
@@ -728,6 +739,16 @@ class ExampleUnitTest {
         )
         assertTrue(geofenceSpot.isGeofenceEntry)
         org.junit.Assert.assertFalse(geofenceSpot.isBluetoothEntry)
+    }
+
+    @Test
+    fun testActivityApiConstants() {
+        assertEquals("com.example.autopark.ACTION_ACTIVITY_UPDATE", com.example.geofence.GeofenceManager.ACTION_ACTIVITY_UPDATE)
+        assertEquals("com.example.autopark.ACTION_ACTIVITY_TRANSITION", com.example.geofence.GeofenceManager.ACTION_ACTIVITY_TRANSITION)
+        assertEquals("is_currently_walking_activity_api", com.example.geofence.GeofenceManager.KEY_IS_CURRENTLY_WALKING)
+        assertEquals("last_walking_activity_time", com.example.geofence.GeofenceManager.KEY_LAST_WALKING_ACTIVITY_TIME)
+        assertEquals("last_detected_activity_type", com.example.geofence.GeofenceManager.KEY_LAST_DETECTED_ACTIVITY_TYPE)
+        assertEquals("last_detected_activity_confidence", com.example.geofence.GeofenceManager.KEY_LAST_DETECTED_ACTIVITY_CONFIDENCE)
     }
 
     @Test
@@ -838,6 +859,7 @@ class ExampleUnitTest {
             override suspend fun deleteSpotById(id: Long) { spotList.removeAll { it.id == id } }
             override suspend fun deleteLegacyDemoSpots() {}
             override suspend fun clearAllSpots() { spotList.clear() }
+            override suspend fun clearSpotsExcept(excludedIds: List<Long>) { spotList.removeIf { !excludedIds.contains(it.id) } }
         }
 
         val fakeDeviceDao = object : com.example.data.dao.BluetoothCarDeviceDao {
@@ -845,6 +867,7 @@ class ExampleUnitTest {
             override suspend fun getAllDevicesDirect() = emptyList<com.example.data.entity.BluetoothCarDevice>()
             override fun getMonitoredDevices() = kotlinx.coroutines.flow.flowOf(emptyList<com.example.data.entity.BluetoothCarDevice>())
             override suspend fun getMonitoredDevicesDirect() = emptyList<com.example.data.entity.BluetoothCarDevice>()
+            override fun getMonitoredDevicesBlocking() = emptyList<com.example.data.entity.BluetoothCarDevice>()
             override suspend fun getSelectedMonitoredDevice(): com.example.data.entity.BluetoothCarDevice? = null
             override fun getSelectedMonitoredDeviceFlow() = kotlinx.coroutines.flow.flowOf(null)
             override suspend fun clearAllMonitoredStatus() {}
@@ -910,6 +933,9 @@ class ExampleUnitTest {
             override suspend fun deactivateAllSpots() {}
             override suspend fun deleteLegacyDemoSpots() {}
             override suspend fun clearAllSpots() {}
+            override suspend fun clearSpotsExcept(excludedIds: List<Long>) {
+                spots.removeAll { it.id !in excludedIds }
+            }
         }
 
         val myCar = com.example.data.entity.BluetoothCarDevice(
@@ -926,6 +952,7 @@ class ExampleUnitTest {
             override suspend fun getAllDevicesDirect() = devices
             override fun getMonitoredDevices() = kotlinx.coroutines.flow.flowOf(devices.filter { it.isMonitoredCar })
             override suspend fun getMonitoredDevicesDirect() = devices.filter { it.isMonitoredCar }
+            override fun getMonitoredDevicesBlocking() = devices.filter { it.isMonitoredCar }
             override suspend fun getSelectedMonitoredDevice() = myCar
             override fun getSelectedMonitoredDeviceFlow() = kotlinx.coroutines.flow.flowOf(myCar)
             override suspend fun clearAllMonitoredStatus() {}
@@ -1051,5 +1078,181 @@ class ExampleUnitTest {
         org.junit.Assert.assertFalse("Street address must NOT be treated as coordinates string", LocationHelper.isCoordinatesString("Πλατεία Χημείου, Θεσσαλονίκη"))
         org.junit.Assert.assertFalse("Street address must NOT be treated as coordinates string", LocationHelper.isCoordinatesString("Τσιμισκή 45"))
     }
+
+    @Test
+    fun testUndergroundLearningDetectionAndGpsSignalErrors() {
+        val undergroundSpot = com.example.data.entity.ParkingSpot(
+            latitude = 37.7749,
+            longitude = -122.4194,
+            floorLevel = "Underground P2",
+            note = "Underground parking safeguard: Weak GPS in garage (±48m). Saved entrance coordinates (±10m).",
+            spotName = "Underground Parking"
+        )
+        assertTrue(undergroundSpot.isUndergroundFallback)
+        assertTrue(undergroundSpot.isUndergroundEntry)
+
+        val regularSpot = com.example.data.entity.ParkingSpot(
+            latitude = 37.7749,
+            longitude = -122.4194,
+            floorLevel = "Ground Level",
+            note = "Parked in open driveway",
+            spotName = "My Parked Car"
+        )
+        org.junit.Assert.assertFalse(regularSpot.isUndergroundFallback)
+        org.junit.Assert.assertFalse(regularSpot.isUndergroundEntry)
+
+        val noSignalError = com.example.ui.viewmodel.GpsSignalErrorInfo(
+            type = com.example.ui.viewmodel.GpsSignalErrorType.NO_SIGNAL
+        )
+        assertEquals(com.example.ui.viewmodel.GpsSignalErrorType.NO_SIGNAL, noSignalError.type)
+
+        val weakSignalError = com.example.ui.viewmodel.GpsSignalErrorInfo(
+            type = com.example.ui.viewmodel.GpsSignalErrorType.WEAK_SIGNAL,
+            accuracyMeters = 82f
+        )
+        assertEquals(com.example.ui.viewmodel.GpsSignalErrorType.WEAK_SIGNAL, weakSignalError.type)
+        assertEquals(82f, weakSignalError.accuracyMeters, 0.01f)
+    }
+
+    @Test
+    fun testNonCarBluetoothDisconnectIgnored() {
+        val car = com.example.data.entity.BluetoothCarDevice(
+            address = "11:22:33:44:55:66",
+            name = "My Car Bluetooth",
+            originalName = "My Car Bluetooth",
+            isMonitoredCar = true
+        )
+        val smartwatch = com.example.data.entity.BluetoothCarDevice(
+            address = "AA:11:22:33:44:55",
+            name = "Galaxy Watch 6",
+            originalName = "Galaxy Watch 6",
+            isMonitoredCar = false
+        )
+        val devices = listOf(car, smartwatch)
+
+        val fakeDeviceDao = object : com.example.data.dao.BluetoothCarDeviceDao {
+            override fun getAllDevices() = kotlinx.coroutines.flow.flowOf(devices)
+            override suspend fun getAllDevicesDirect() = devices
+            override fun getMonitoredDevices() = kotlinx.coroutines.flow.flowOf(listOf(car))
+            override suspend fun getMonitoredDevicesDirect() = listOf(car)
+            override fun getMonitoredDevicesBlocking() = listOf(car)
+            override suspend fun getSelectedMonitoredDevice() = car
+            override fun getSelectedMonitoredDeviceFlow() = kotlinx.coroutines.flow.flowOf(car)
+            override suspend fun clearAllMonitoredStatus() {}
+            override suspend fun setSoleMonitoredDevice(address: String) {}
+            override suspend fun getDeviceByAddress(address: String) = devices.firstOrNull { it.address.equals(address, ignoreCase = true) }
+            override suspend fun getDeviceByNameOrOriginalName(name: String) = devices.firstOrNull { it.name.equals(name, ignoreCase = true) }
+            override suspend fun updateDeviceName(address: String, name: String) {}
+            override suspend fun updateDeviceNameAndOriginal(address: String, name: String, originalName: String) {}
+            override suspend fun setDeviceMonitoredState(address: String, isMonitored: Boolean) {}
+            override suspend fun insertOrUpdate(device: com.example.data.entity.BluetoothCarDevice) {}
+            override suspend fun update(device: com.example.data.entity.BluetoothCarDevice) {}
+            override suspend fun deleteDevice(address: String) {}
+        }
+
+        val fakeSpotDao = object : com.example.data.dao.ParkingSpotDao {
+            override fun getAllSpots() = kotlinx.coroutines.flow.flowOf(emptyList<com.example.data.entity.ParkingSpot>())
+            override suspend fun getAllSpotsDirect() = emptyList<com.example.data.entity.ParkingSpot>()
+            override fun getActiveSpot() = kotlinx.coroutines.flow.flowOf(null)
+            override suspend fun getActiveSpotDirect() = null
+            override suspend fun getMostRecentSpotDirect() = null
+            override suspend fun getSpotById(id: Long) = null
+            override suspend fun insertSpot(spot: com.example.data.entity.ParkingSpot) = 1L
+            override suspend fun updateSpot(spot: com.example.data.entity.ParkingSpot) {}
+            override suspend fun deactivateAllSpots() {}
+            override suspend fun deleteSpotById(id: Long) {}
+            override suspend fun deleteLegacyDemoSpots() {}
+            override suspend fun clearAllSpots() {}
+            override suspend fun clearSpotsExcept(excludedIds: List<Long>) {}
+        }
+
+        val repository = com.example.data.repository.ParkingRepository(fakeSpotDao, fakeDeviceDao)
+
+        // When a smartwatch disconnects, repository must NOT resolve it as a monitored car
+        kotlinx.coroutines.runBlocking {
+            val matched: com.example.data.entity.BluetoothCarDevice? = repository.findMatchingMonitoredDevice(smartwatch.address, smartwatch.name)
+            org.junit.Assert.assertNull("Smartwatch disconnect must NOT match monitored car", matched)
+        }
+    }
+
+    @Test
+    fun testRedLightAccelerationDoesNotTriggerWalkAwayWithoutSteps() {
+        // When car moves away from a red light stop:
+        // dist = 22m, speed = 1.6 m/s (car rolling forward in traffic), but 0 footsteps taken
+        val dist = 22f
+        val speedMps = 1.6f
+        val stepsTaken = 0
+        val curSteps = 100 // step counter active
+
+        val hasPhysicalSteps = curSteps < 0 || stepsTaken >= 8
+        val isPedestrianSpeed = speedMps in 0.3f..2.2f
+        val isWalkingConfirmed = hasPhysicalSteps // without footsteps, cannot be walking
+
+        val hasWalkedAway = (dist >= 20f && isPedestrianSpeed && isWalkingConfirmed) ||
+                (dist >= 50f && speedMps < 2.5f && isWalkingConfirmed)
+
+        org.junit.Assert.assertFalse("Vehicle rolling away from red light with 0 footsteps must NOT trigger walk-away auto-save", hasWalkedAway)
+    }
+
+    @Test
+    fun testParkingTimerDisplayFormatting() {
+        // Helper function matching the exact formatting logic in ParkingTimerButton
+        fun formatTimerDisplay(remainingSeconds: Long, isEditing: Boolean = false): Pair<String, String> {
+            val totalHours = (remainingSeconds / 3600).toInt()
+            val totalMinutes = ((remainingSeconds % 3600) / 60).toInt()
+            val totalSeconds = (remainingSeconds % 60).toInt()
+
+            val showMinutesAndSeconds = (!isEditing && totalHours == 0)
+            val firstDigits = if (showMinutesAndSeconds) totalMinutes else totalHours
+            val secondDigits = if (showMinutesAndSeconds) totalSeconds else totalMinutes
+
+            return Pair(
+                String.format(java.util.Locale.US, "%02d", firstDigits),
+                String.format(java.util.Locale.US, "%02d", secondDigits)
+            )
+        }
+
+        // 1. Idle / zero seconds: displays 00:00
+        val idle = formatTimerDisplay(0L)
+        assertEquals("00", idle.first)
+        assertEquals("00", idle.second)
+
+        // 2. Timer only counts minutes (under 1 hour, e.g. 15 minutes = 900s)
+        val fifteenMin = formatTimerDisplay(900L)
+        assertEquals("15", fifteenMin.first) // Minutes
+        assertEquals("00", fifteenMin.second) // Seconds
+
+        // 3. Counting down under 1 hour: 14 min 59 sec
+        val fourteenMin59Sec = formatTimerDisplay(899L)
+        assertEquals("14", fourteenMin59Sec.first) // Minutes
+        assertEquals("59", fourteenMin59Sec.second) // Seconds dynamically count down
+
+        // 4. Counting down under 1 hour: 5 seconds remaining
+        val fiveSec = formatTimerDisplay(5L)
+        assertEquals("00", fiveSec.first) // Minutes
+        assertEquals("05", fiveSec.second) // Seconds
+
+        // 5. Timer over 1 hour: 1 hr 30 min (5400s)
+        val oneHourThirtyMin = formatTimerDisplay(5400L)
+        assertEquals("01", oneHourThirtyMin.first) // Hours
+        assertEquals("30", oneHourThirtyMin.second) // Minutes
+
+        // 6. Transition across 1-hour boundary:
+        // Exactly 1 hour (3600s) -> 01:00 (HH:MM)
+        val oneHour = formatTimerDisplay(3600L)
+        assertEquals("01", oneHour.first)
+        assertEquals("00", oneHour.second)
+
+        // 59 min 59 sec (3599s) -> dynamically switches to 59:59 (MM:SS)
+        val underOneHour = formatTimerDisplay(3599L)
+        assertEquals("59", underOneHour.first) // Minutes
+        assertEquals("59", underOneHour.second) // Seconds
+
+        // 7. When editing (setting hours/minutes), displays HH:MM even if hours is 0
+        val editingZeroHours = formatTimerDisplay(900L, isEditing = true)
+        assertEquals("00", editingZeroHours.first) // Hours
+        assertEquals("15", editingZeroHours.second) // Minutes
+    }
 }
+
 

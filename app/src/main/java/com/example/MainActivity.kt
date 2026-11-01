@@ -118,7 +118,7 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import com.example.receiver.ParkingAlarmDismissReceiver
 import com.example.ui.components.AnimatedNavIcon
-import com.example.ui.components.BackgroundAutoSaveSetupSheet
+import com.example.ui.components.GpsSignalErrorDialog
 import com.example.ui.components.ParkingAlarmAlertDialog
 import com.example.ui.components.ParkingAlarmNotificationBanner
 import com.example.ui.components.WhatsNewSheet
@@ -292,11 +292,12 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
     val showTimerDialog by viewModel.showTimerDialog.collectAsStateWithLifecycle()
     val isAlarmActive by viewModel.isAlarmActive.collectAsStateWithLifecycle()
     val showWhatsNew by viewModel.showWhatsNew.collectAsStateWithLifecycle()
-    val showBackgroundAutoSaveSetup by viewModel.showBackgroundAutoSaveSetup.collectAsStateWithLifecycle()
     val whatsNewMessage by viewModel.whatsNewMessage.collectAsStateWithLifecycle()
+    val gpsSignalError by viewModel.gpsSignalErrorInfo.collectAsStateWithLifecycle()
+    val isEditSpotSheetOpen by viewModel.isEditSpotSheetOpen.collectAsStateWithLifecycle()
 
     val blurRadius by animateDpAsState(
-        targetValue = if (showWhatsNew || showBackgroundAutoSaveSetup) 20.dp else 0.dp,
+        targetValue = if (gpsSignalError != null || showWhatsNew || selectedTab == AppTab.BLUETOOTH_AUTO || isEditSpotSheetOpen) 20.dp else 0.dp,
         animationSpec = tween(durationMillis = 300),
         label = "screen_blur"
     )
@@ -339,12 +340,12 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
         }
     }
 
-    // Handle system device back button for What's New window, background setup, or screen navigation
-    BackHandler(enabled = showWhatsNew || showBackgroundAutoSaveSetup || viewModel.canNavigateBack || selectedTab != AppTab.DASHBOARD) {
-        if (showWhatsNew) {
+    // Handle system device back button for GPS dialog, What's New window, or screen navigation
+    BackHandler(enabled = gpsSignalError != null || showWhatsNew || viewModel.canNavigateBack || selectedTab != AppTab.DASHBOARD) {
+        if (gpsSignalError != null) {
+            viewModel.dismissGpsSignalErrorDialog()
+        } else if (showWhatsNew) {
             viewModel.dismissWhatsNewWindow()
-        } else if (showBackgroundAutoSaveSetup) {
-            viewModel.dismissBackgroundAutoSaveSetupSheet()
         } else {
             viewModel.navigateBack()
         }
@@ -423,7 +424,7 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
     // Sync pager when selectedTab is changed programmatically with smooth animation
     LaunchedEffect(selectedTab) {
         val targetIndex = mainTabs.indexOf(selectedTab)
-        if (targetIndex >= 0 && pagerState.currentPage != targetIndex) {
+        if (targetIndex >= 0 && (pagerState.currentPage != targetIndex || pagerState.settledPage != targetIndex)) {
             pagerState.animateScrollToPage(
                 page = targetIndex,
                 animationSpec = spring(
@@ -636,10 +637,36 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
         )
     }
 
-    if (showBackgroundAutoSaveSetup) {
-        BackgroundAutoSaveSetupSheet(
-            viewModel = viewModel,
-            onDismiss = { viewModel.dismissBackgroundAutoSaveSetupSheet() }
+
+    gpsSignalError?.let { errorInfo ->
+        GpsSignalErrorDialog(
+            errorInfo = errorInfo,
+            onDismiss = { viewModel.dismissGpsSignalErrorDialog() },
+            onTryAgain = {
+                viewModel.dismissGpsSignalErrorDialog()
+                viewModel.refreshCurrentLocation { freshLoc ->
+                    if (freshLoc != null) {
+                        viewModel.saveCurrentLocationAsParking(
+                            spotName = errorInfo.spotName,
+                            floorLevel = errorInfo.floorLevel,
+                            note = errorInfo.note,
+                            customAddress = errorInfo.customAddress
+                        )
+                    }
+                }
+            },
+            onSaveAnyway = {
+                viewModel.dismissGpsSignalErrorDialog()
+                viewModel.saveCurrentLocationAsParking(
+                    spotName = errorInfo.spotName,
+                    floorLevel = errorInfo.floorLevel,
+                    note = errorInfo.note,
+                    customLat = errorInfo.customLat,
+                    customLng = errorInfo.customLng,
+                    customAddress = errorInfo.customAddress,
+                    forceSaveAnyway = true
+                )
+            }
         )
     }
 }

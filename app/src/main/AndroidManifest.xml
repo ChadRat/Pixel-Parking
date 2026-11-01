@@ -130,6 +130,7 @@
                 <action android:name="com.example.autopark.ACTION_GEOFENCE_TRANSITION" />
                 <action android:name="com.example.autopark.ACTION_SIMULATE_GEOFENCE_EXIT" />
                 <action android:name="com.example.autopark.ACTION_ACTIVITY_TRANSITION" />
+                <action android:name="com.example.autopark.ACTION_ACTIVITY_UPDATE" />
                 <action android:name="com.example.autopark.ACTION_LOCATION_UPDATE" />
             </intent-filter>
         </receiver>
@@ -159,25 +160,9 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
                 <data
                     android:host="*"
-                    android:pathPrefix="/request_sync"
-                    android:scheme="wear" />
-                <data
-                    android:host="*"
-                    android:pathPrefix="/save_spot"
-                    android:scheme="wear" />
-                <data
-                    android:host="*"
-                    android:pathPrefix="/car_found"
-                    android:scheme="wear" />
-                <data
-                    android:host="*"
-                    android:pathPrefix="/mark_found"
-                    android:scheme="wear" />
-                <data
-                    android:host="*"
-                    android:pathPrefix="/restore_latest_spot"
                     android:scheme="wear" />
             </intent-filter>
         </service>

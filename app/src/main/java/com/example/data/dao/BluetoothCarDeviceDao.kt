@@ -22,6 +22,9 @@ interface BluetoothCarDeviceDao {
     @Query("SELECT * FROM bluetooth_devices WHERE isMonitoredCar = 1")
     suspend fun getMonitoredDevicesDirect(): List<BluetoothCarDevice>
 
+    @Query("SELECT * FROM bluetooth_devices WHERE isMonitoredCar = 1")
+    fun getMonitoredDevicesBlocking(): List<BluetoothCarDevice>
+
     @Query("SELECT * FROM bluetooth_devices WHERE isMonitoredCar = 1 LIMIT 1")
     suspend fun getSelectedMonitoredDevice(): BluetoothCarDevice?
 

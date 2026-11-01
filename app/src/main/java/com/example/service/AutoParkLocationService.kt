@@ -15,6 +15,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
+import com.example.R
 import com.example.data.database.AppDatabase
 import com.example.data.entity.BluetoothCarDevice
 import com.example.data.entity.ParkingSpot
@@ -450,7 +451,7 @@ class AutoParkLocationService : Service() {
         )
 
         return NotificationCompat.Builder(this, ParkingNotificationHelper.CHANNEL_PARKING_ALERTS)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_notification_car)
             .setContentTitle(strings.appName)
             .setContentText(strings.recordingGps)
             .setPriority(NotificationCompat.PRIORITY_LOW)

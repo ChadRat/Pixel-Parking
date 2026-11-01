@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.Grain
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.NearMe
@@ -99,10 +98,8 @@ fun DeveloperOptionsScreen(
     val customCoordsInput by viewModel.customFarAwayCoordsInput.collectAsStateWithLifecycle()
     val isSimpleScrollEnabled by viewModel.isDevSimpleScrollEnabled.collectAsStateWithLifecycle()
     val isDevFunWalkAwayIcon by viewModel.isDevFunWalkAwayIcon.collectAsStateWithLifecycle()
-    val textWeight by viewModel.devTextWeight.collectAsStateWithLifecycle()
     val whatsNewMessage by viewModel.whatsNewMessage.collectAsStateWithLifecycle()
     val devSimulatedProgress by viewModel.devSimulatedProgress.collectAsStateWithLifecycle()
-    var messageInput by remember(whatsNewMessage) { mutableStateOf<String>(whatsNewMessage) }
     var showSquigglyLoadingPreview by remember { mutableStateOf(false) }
 
     if (showSquigglyLoadingPreview) {
@@ -224,44 +221,6 @@ fun DeveloperOptionsScreen(
                         )
                     }
                 }
-            }
-
-            item {
-                WavyDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                    waveLength = 34f,
-                    amplitude = 6f,
-                    thickness = 4f,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                )
-            }
-
-            // Interactive Slider to control text weight dynamically across the app
-            item {
-                DeveloperOptionTextWeightSlider(
-                    currentWeight = textWeight,
-                    onWeightChange = { viewModel.setDevTextWeight(it) },
-                    onReset = { viewModel.setDevTextWeight(400) }
-                )
-            }
-
-            item {
-                WavyDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                    waveLength = 34f,
-                    amplitude = 6f,
-                    thickness = 4f,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                )
-            }
-
-            // Interactive Distance Slider to preview waypoint fill percentage (Phone & Wear OS)
-            item {
-                DeveloperOptionDistanceFillSlider(
-                    currentProgress = devSimulatedProgress,
-                    onProgressChange = { viewModel.setDevSimulatedProgress(it) },
-                    onReset = { viewModel.resetDevSimulatedProgress() }
-                )
             }
 
             item {
@@ -592,17 +551,6 @@ fun DeveloperOptionsScreen(
                 }
             }
 
-            // Preview Background Auto-Save Setup Pop-up (with screen blur)
-            item {
-                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                    DevTimerStyleButton(
-                        text = "Preview Auto-Save Setup Pop-up",
-                        icon = Icons.Default.Shield,
-                        onClick = { viewModel.showBackgroundAutoSaveSetupSheet() },
-                        testTag = "action_dev_preview_auto_save_popup"
-                    )
-                }
-            }
 
             // Test Geofence Auto-Park
             item {
@@ -652,104 +600,13 @@ fun DeveloperOptionsScreen(
                 )
             }
 
-            // What's New Controls Card
+            // Interactive Distance Slider to preview waypoint fill percentage (Phone & Wear OS)
             item {
-                Card(
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                        .testTag("card_dev_whats_new_controls")
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = "What's New Developer Controls",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "The window dynamically covers only as much space as needed by the text. As soon as the developer changes its message and an update download occurs, it automatically appears.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        // Dedicated Trigger Button with requested Timer Button style
-                        DevTimerStyleButton(
-                            text = "Trigger What's new window",
-                            icon = Icons.Default.AutoAwesome,
-                            onClick = {
-                                viewModel.showWhatsNewWindow(force = true)
-                            },
-                            testTag = "button_dev_trigger_whats_new"
-                        )
-
-                        OutlinedTextField(
-                            value = messageInput,
-                            onValueChange = {
-                                messageInput = it
-                                viewModel.setDeveloperWhatsNewMessage(it)
-                            },
-                            label = { Text("Message") },
-                            placeholder = { Text("hello world ( ꈍᴗꈍ) ") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("textfield_dev_whats_new_message"),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                            ),
-                            maxLines = 4
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            DevTimerStyleButton(
-                                text = "Reset Default",
-                                icon = Icons.Default.Refresh,
-                                onClick = {
-                                    viewModel.resetDeveloperWhatsNewMessage()
-                                    messageInput = com.example.util.WhatsNewManager.CURRENT_MESSAGE
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        "Reset message to default: \"hello world ( ꈍᴗꈍ) \"",
-                                        android.widget.Toast.LENGTH_SHORT
-                                    ).show()
-                                },
-                                isFullWidth = false,
-                                modifier = Modifier.weight(1f),
-                                testTag = "button_dev_reset_whats_new"
-                            )
-
-                            DevTimerStyleButton(
-                                text = "Simulate Download",
-                                icon = Icons.Default.Grain,
-                                onClick = {
-                                    com.example.util.WhatsNewManager.onUpdateDownloadStarted(context)
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        "Simulated update download (Checking What's New message trigger)",
-                                        android.widget.Toast.LENGTH_SHORT
-                                    ).show()
-                                },
-                                isFullWidth = false,
-                                modifier = Modifier.weight(1f),
-                                testTag = "button_dev_simulate_update_download"
-                            )
-                        }
-                    }
-                }
+                DeveloperOptionDistanceFillSlider(
+                    currentProgress = devSimulatedProgress,
+                    onProgressChange = { viewModel.setDevSimulatedProgress(it) },
+                    onReset = { viewModel.resetDevSimulatedProgress() }
+                )
             }
 
             item {
@@ -759,139 +616,7 @@ fun DeveloperOptionsScreen(
     }
 }
 
-/**
- * Interactive slider in Developer Options allowing fine-grained control
- * of the text weight across the entire app, matching Settings squircle icon style.
- */
-@Composable
-fun DeveloperOptionTextWeightSlider(
-    currentWeight: Int,
-    onWeightChange: (Int) -> Unit,
-    onReset: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var sliderPosition by remember(currentWeight) { mutableFloatStateOf(currentWeight.toFloat()) }
-    val displayWeight = sliderPosition.roundToInt().coerceIn(100, 900)
-    val weightLabel = remember(displayWeight) {
-        getFontWeightLabel(displayWeight)
-    }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .testTag("dev_text_weight_container")
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    modifier = Modifier.size(46.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.FormatBold,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-
-                Column {
-                    Text(
-                        text = "System text weight",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = weightLabel,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            if (currentWeight != 400) {
-                TextButton(
-                    onClick = onReset,
-                    modifier = Modifier.testTag("btn_reset_text_weight")
-                ) {
-                    Text(
-                        text = "Reset",
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Slider(
-            value = sliderPosition,
-            onValueChange = {
-                sliderPosition = it
-                onWeightChange(it.roundToInt().coerceIn(100, 900))
-            },
-            valueRange = 100f..900f,
-            steps = 7,
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
-                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("slider_text_weight")
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Thin (100)",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = "Default (400)",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (displayWeight in 350..450) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = "Black (900)",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-private fun getFontWeightLabel(weight: Int): String {
-    return when {
-        weight <= 150 -> "Thin (100)"
-        weight <= 250 -> "Extra Light (200)"
-        weight <= 350 -> "Light (300)"
-        weight <= 450 -> "Regular (400) • System Default"
-        weight <= 550 -> "Medium (500)"
-        weight <= 650 -> "Semi-Bold (600)"
-        weight <= 750 -> "Bold (700)"
-        weight <= 850 -> "Extra Bold (800)"
-        else -> "Black (900)"
-    }
-}
 
 /**
  * Interactive distance slider in Developer Options allowing live preview of

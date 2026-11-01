@@ -9,8 +9,10 @@ import android.util.Log
 import android.os.Looper
 import com.example.receiver.GeofenceTransitionsReceiver
 import com.google.android.gms.location.ActivityRecognition
+import com.google.android.gms.location.ActivityRecognitionResult
 import com.google.android.gms.location.ActivityTransition
 import com.google.android.gms.location.ActivityTransitionRequest
+import com.google.android.gms.location.ActivityTransitionResult
 import com.google.android.gms.location.DetectedActivity
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingClient
@@ -20,6 +22,10 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -42,12 +48,17 @@ object GeofenceManager {
     const val ACTION_GEOFENCE_TRANSITION = "com.example.autopark.ACTION_GEOFENCE_TRANSITION"
     const val ACTION_SIMULATE_GEOFENCE_EXIT = "com.example.autopark.ACTION_SIMULATE_GEOFENCE_EXIT"
     const val ACTION_ACTIVITY_TRANSITION = "com.example.autopark.ACTION_ACTIVITY_TRANSITION"
+    const val ACTION_ACTIVITY_UPDATE = "com.example.autopark.ACTION_ACTIVITY_UPDATE"
     const val ACTION_LOCATION_UPDATE = "com.example.autopark.ACTION_LOCATION_UPDATE"
 
     // SharedPreferences keys for persistent car tracking (survives Low Memory Killer)
     const val PREFS_NAME = "auto_park_prefs"
     const val KEY_GEOFENCE_ENABLED = "geofence_auto_park_enabled"
     const val KEY_IS_MOVING_IN_CAR = "is_moving_in_car"
+    const val KEY_IS_CURRENTLY_WALKING = "is_currently_walking_activity_api"
+    const val KEY_LAST_WALKING_ACTIVITY_TIME = "last_walking_activity_time"
+    const val KEY_LAST_DETECTED_ACTIVITY_TYPE = "last_detected_activity_type"
+    const val KEY_LAST_DETECTED_ACTIVITY_CONFIDENCE = "last_detected_activity_confidence"
     const val KEY_CAR_STOP_LAT = "candidate_car_park_lat"
     const val KEY_CAR_STOP_LNG = "candidate_car_park_lng"
     const val KEY_CAR_STOP_ALT = "candidate_car_park_alt"
@@ -67,6 +78,12 @@ object GeofenceManager {
     const val KEY_PREV_FIX_LNG = "walk_away_prev_fix_lng"
     const val KEY_PREV_FIX_TIME = "walk_away_prev_fix_time"
     const val KEY_DEV_ALLOW_GEOFENCE_AFTER_BT = "dev_allow_geofence_after_bt"
+    const val KEY_CAR_STOP_LOCKED = "candidate_car_stop_locked"
+    const val KEY_LAST_DRIVING_LAT = "last_driving_lat"
+    const val KEY_LAST_DRIVING_LNG = "last_driving_lng"
+    const val KEY_LAST_DRIVING_ALT = "last_driving_alt"
+    const val KEY_LAST_DRIVING_ACC = "last_driving_acc"
+    const val KEY_LAST_DRIVING_TIME = "last_driving_time"
 
     // Underground Parking Safeguard via GPS Accuracy Backtracking
     const val KEY_HIGH_ACCURACY_GPS_BUFFER = "high_accuracy_gps_buffer"
@@ -110,15 +127,37 @@ object GeofenceManager {
                         val stopLat = prefs.getFloat(KEY_CAR_STOP_LAT, 0f).toDouble()
                         val stopLng = prefs.getFloat(KEY_CAR_STOP_LNG, 0f).toDouble()
                         val stopTime = prefs.getLong(KEY_CAR_STOP_TIME, 0L)
-                        val stepsAtStop = prefs.getInt(KEY_STEPS_AT_STOP, -1)
+                        var stepsAtStop = prefs.getInt(KEY_STEPS_AT_STOP, -1)
                         val now = System.currentTimeMillis()
 
                         val lastAutoSaveTime = prefs.getLong(KEY_LAST_AUTO_SAVE_TIME, 0L)
                         val justSaved = (now - lastAutoSaveTime) < 90_000L
 
-                        if (wasMovingInCar && stopLat != 0.0 && stopLng != 0.0 && (now - stopTime) in 20_000L..(25 * 60 * 1000L) && !justSaved) {
-                            if (stepsAtStop >= 0 && (currentStepCount - stepsAtStop) >= 15) {
-                                Log.d(TAG, "Walking detected via step counter (${currentStepCount - stepsAtStop} steps after vehicle stop). Triggering Walk Away auto-save!")
+                        // Initialize steps snapshot upon car stop if not yet recorded
+                        if (stepsAtStop < 0 && (stopLat != 0.0 || wasMovingInCar)) {
+                            stepsAtStop = currentStepCount
+                            prefs.edit().putInt(KEY_STEPS_AT_STOP, stepsAtStop).apply()
+                        }
+
+                        val stepDelta = if (stepsAtStop >= 0 && currentStepCount >= stepsAtStop) (currentStepCount - stepsAtStop) else 0
+
+                        // Concrete physical footstep telemetry: actively confirms walking
+                        if (stepDelta >= 4) {
+                            prefs.edit()
+                                .putBoolean(KEY_IS_CURRENTLY_WALKING, true)
+                                .putLong(KEY_LAST_WALKING_ACTIVITY_TIME, now)
+                                .putInt(KEY_LAST_DETECTED_ACTIVITY_TYPE, DetectedActivity.WALKING)
+                                .putInt(KEY_LAST_DETECTED_ACTIVITY_CONFIDENCE, 95)
+                                .apply()
+                        }
+
+                        val isRecentStop = (now - stopTime) < 30 * 60 * 1000L
+                        if ((wasMovingInCar || isRecentStop) && stopLat != 0.0 && stopLng != 0.0 && !justSaved) {
+                            if (com.example.util.BluetoothDeviceHelper.isAnyCarBluetoothConnected(context)) {
+                                return
+                            }
+                            if (stepDelta >= 10) {
+                                Log.d(TAG, "Walking detected via step counter ($stepDelta footsteps after stop). Auto-saving Walk Away parking location!")
                                 prefs.edit()
                                     .putBoolean(KEY_IS_MOVING_IN_CAR, false)
                                     .remove(KEY_STEPS_AT_STOP)
@@ -170,6 +209,18 @@ object GeofenceManager {
             PendingIntent.FLAG_UPDATE_CURRENT
         }
         return PendingIntent.getBroadcast(context, 1002, intent, flags)
+    }
+
+    private fun getActivityUpdatesPendingIntent(context: Context): PendingIntent {
+        val intent = Intent(context, GeofenceTransitionsReceiver::class.java).apply {
+            action = ACTION_ACTIVITY_UPDATE
+        }
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        return PendingIntent.getBroadcast(context, 1004, intent, flags)
     }
 
     private fun getLocationPendingIntent(context: Context): PendingIntent {
@@ -242,9 +293,9 @@ object GeofenceManager {
             val fusedClient = LocationServices.getFusedLocationProviderClient(context)
             val request = LocationRequest.Builder(
                 Priority.PRIORITY_HIGH_ACCURACY,
-                12_000L
-            ).setMinUpdateIntervalMillis(6_000L)
-             .setMinUpdateDistanceMeters(8f)
+                10_000L
+            ).setMinUpdateIntervalMillis(5_000L)
+             .setMinUpdateDistanceMeters(0f)
              .build()
 
             // 1. PendingIntent for persistent 24/7 background delivery even when app process is closed
@@ -314,13 +365,62 @@ object GeofenceManager {
             .putBoolean(KEY_IS_GEOFENCE_ARMED, false)
             .putBoolean(KEY_UNDERGROUND_FALLBACK_ACTIVE, false)
             .remove(KEY_STEPS_AT_STOP)
+            .putBoolean(KEY_IS_CURRENTLY_WALKING, false)
+            .remove(KEY_LAST_WALKING_ACTIVITY_TIME)
+            .remove(KEY_LAST_DETECTED_ACTIVITY_TYPE)
+            .remove(KEY_LAST_DETECTED_ACTIVITY_CONFIDENCE)
+            .remove(KEY_CAR_STOP_LOCKED)
+            .remove(KEY_LAST_DRIVING_LAT)
+            .remove(KEY_LAST_DRIVING_LNG)
+            .remove(KEY_LAST_DRIVING_ALT)
+            .remove(KEY_LAST_DRIVING_ACC)
+            .remove(KEY_LAST_DRIVING_TIME)
             .apply()
     }
 
     /**
-     * Registers Activity Recognition transitions to detect when:
+     * Verifies if Android Activity API confirms that the user is actively walking.
+     * CRITICAL: To prevent misfires, location saving is tied directly to this verification!
+     */
+    fun isWalkingAccordingToActivityApi(context: Context): Boolean {
+        // If phone is currently connected to car Bluetooth, user is in the car and cannot be walking
+        if (com.example.util.BluetoothDeviceHelper.isAnyCarBluetoothConnected(context)) {
+            return false
+        }
+
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val isCurrentlyWalking = prefs.getBoolean(KEY_IS_CURRENTLY_WALKING, false)
+        val lastWalkingTime = prefs.getLong(KEY_LAST_WALKING_ACTIVITY_TIME, 0L)
+        val lastActivityType = prefs.getInt(KEY_LAST_DETECTED_ACTIVITY_TYPE, DetectedActivity.UNKNOWN)
+        val now = System.currentTimeMillis()
+
+        // If the Android Activity API explicitly detected IN_VEHICLE with no recent walking, user is in vehicle
+        if (lastActivityType == DetectedActivity.IN_VEHICLE && (now - lastWalkingTime) > 15_000L) {
+            return false
+        }
+
+        // Active walking transition is maintained or walking report was received within the last 60 seconds
+        val isWalkingFresh = (now - lastWalkingTime) in 0L..60_000L && lastWalkingTime > 0L
+        return isCurrentlyWalking || isWalkingFresh
+    }
+
+    fun getActivityName(type: Int): String {
+        return when (type) {
+            DetectedActivity.IN_VEHICLE -> "IN_VEHICLE"
+            DetectedActivity.WALKING -> "WALKING"
+            DetectedActivity.ON_FOOT -> "ON_FOOT"
+            DetectedActivity.RUNNING -> "RUNNING"
+            DetectedActivity.STILL -> "STILL"
+            DetectedActivity.ON_BICYCLE -> "ON_BICYCLE"
+            DetectedActivity.TILTING -> "TILTING"
+            else -> "UNKNOWN ($type)"
+        }
+    }
+
+    /**
+     * Registers Activity Recognition transitions & periodic updates to detect when:
      * 1. User enters or exits a vehicle (IN_VEHICLE)
-     * 2. User starts walking (WALKING / ON_FOOT)
+     * 2. User starts walking, on foot, or running (WALKING / ON_FOOT / RUNNING)
      */
     @SuppressLint("MissingPermission")
     fun registerActivityTransitions(context: Context) {
@@ -339,25 +439,46 @@ object GeofenceManager {
                     .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
                     .build(),
                 ActivityTransition.Builder()
+                    .setActivityType(DetectedActivity.WALKING)
+                    .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_EXIT)
+                    .build(),
+                ActivityTransition.Builder()
                     .setActivityType(DetectedActivity.ON_FOOT)
                     .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
                     .build(),
                 ActivityTransition.Builder()
+                    .setActivityType(DetectedActivity.ON_FOOT)
+                    .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_EXIT)
+                    .build(),
+                ActivityTransition.Builder()
                     .setActivityType(DetectedActivity.RUNNING)
                     .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
+                    .build(),
+                ActivityTransition.Builder()
+                    .setActivityType(DetectedActivity.RUNNING)
+                    .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_EXIT)
                     .build()
             )
 
             val request = ActivityTransitionRequest(transitions)
-            val pendingIntent = getActivityTransitionPendingIntent(context)
+            val client = ActivityRecognition.getClient(context)
 
-            ActivityRecognition.getClient(context)
-                .requestActivityTransitionUpdates(request, pendingIntent)
+            val transitionPendingIntent = getActivityTransitionPendingIntent(context)
+            client.requestActivityTransitionUpdates(request, transitionPendingIntent)
                 .addOnSuccessListener {
-                    Log.d(TAG, "Successfully registered activity transitions for driving & walking.")
+                    Log.d(TAG, "Successfully registered Activity Transitions for vehicle & walking.")
                 }
                 .addOnFailureListener { e ->
-                    Log.w(TAG, "Failed to register activity transitions: ${e.message}")
+                    Log.w(TAG, "Failed to register Activity Transitions: ${e.message}")
+                }
+
+            val updatesPendingIntent = getActivityUpdatesPendingIntent(context)
+            client.requestActivityUpdates(10_000L, updatesPendingIntent)
+                .addOnSuccessListener {
+                    Log.d(TAG, "Successfully registered periodic Activity Recognition updates (10s interval).")
+                }
+                .addOnFailureListener { e ->
+                    Log.w(TAG, "Failed to register periodic Activity Recognition updates: ${e.message}")
                 }
         } catch (e: SecurityException) {
             Log.w(TAG, "SecurityException registering activity transitions: ${e.message}")
@@ -368,13 +489,232 @@ object GeofenceManager {
 
     fun removeActivityTransitions(context: Context) {
         try {
-            val pendingIntent = getActivityTransitionPendingIntent(context)
-            ActivityRecognition.getClient(context)
-                .removeActivityTransitionUpdates(pendingIntent)
-                .addOnSuccessListener {
-                    Log.d(TAG, "Successfully removed activity transition updates.")
-                }
+            val client = ActivityRecognition.getClient(context)
+            client.removeActivityTransitionUpdates(getActivityTransitionPendingIntent(context))
+            client.removeActivityUpdates(getActivityUpdatesPendingIntent(context))
+            Log.d(TAG, "Successfully removed activity transitions and periodic updates.")
         } catch (_: Exception) {}
+    }
+
+    /**
+     * Processes periodic ActivityRecognitionResult from Android Activity API.
+     */
+    fun processActivityRecognitionResult(context: Context, result: ActivityRecognitionResult) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+
+        val activities = result.probableActivities ?: emptyList()
+        val walkingCandidate = activities.firstOrNull {
+            (it.type == DetectedActivity.WALKING ||
+             it.type == DetectedActivity.ON_FOOT ||
+             it.type == DetectedActivity.RUNNING) && it.confidence >= 25
+        }
+        val vehicleCandidate = activities.firstOrNull {
+            it.type == DetectedActivity.IN_VEHICLE && it.confidence >= 55
+        }
+
+        val mostProbable = result.mostProbableActivity
+        val type = mostProbable?.type ?: DetectedActivity.UNKNOWN
+        val confidence = mostProbable?.confidence ?: 0
+
+        Log.d(TAG, "Android Activity API update: type=$type (${getActivityName(type)}), confidence=$confidence%, probableCount=${activities.size}")
+
+        if (walkingCandidate != null || type == DetectedActivity.WALKING || type == DetectedActivity.ON_FOOT || type == DetectedActivity.RUNNING) {
+            val effConfidence = walkingCandidate?.confidence ?: confidence
+            if (effConfidence >= 25) {
+                val effType = walkingCandidate?.type ?: type
+                prefs.edit()
+                    .putBoolean(KEY_IS_CURRENTLY_WALKING, true)
+                    .putLong(KEY_LAST_WALKING_ACTIVITY_TIME, now)
+                    .putInt(KEY_LAST_DETECTED_ACTIVITY_TYPE, effType)
+                    .putInt(KEY_LAST_DETECTED_ACTIVITY_CONFIDENCE, effConfidence)
+                    .apply()
+                Log.d(TAG, "Android Activity API confirmed user is WALKING (type: ${getActivityName(effType)}, confidence: $effConfidence%).")
+                checkWalkingDepartureAutoSave(context)
+                return
+            }
+        }
+
+        if (vehicleCandidate != null && (type == DetectedActivity.IN_VEHICLE || vehicleCandidate.confidence >= 60)) {
+            val lastWalking = prefs.getLong(KEY_LAST_WALKING_ACTIVITY_TIME, 0L)
+            if (now - lastWalking > 20_000L) {
+                prefs.edit()
+                    .putBoolean(KEY_IS_CURRENTLY_WALKING, false)
+                    .putBoolean(KEY_IS_MOVING_IN_CAR, true)
+                    .putInt(KEY_LAST_DETECTED_ACTIVITY_TYPE, DetectedActivity.IN_VEHICLE)
+                    .putInt(KEY_LAST_DETECTED_ACTIVITY_CONFIDENCE, vehicleCandidate.confidence)
+                    .apply()
+                Log.d(TAG, "Android Activity API confirmed user is IN_VEHICLE (confidence: ${vehicleCandidate.confidence}%). Disarming false geofences.")
+                removeGeofences(context)
+            }
+            return
+        }
+
+        if (type == DetectedActivity.STILL) {
+            prefs.edit()
+                .putInt(KEY_LAST_DETECTED_ACTIVITY_TYPE, type)
+                .putInt(KEY_LAST_DETECTED_ACTIVITY_CONFIDENCE, confidence)
+                .apply()
+        }
+    }
+
+    /**
+     * Processes ActivityTransitionResult from Android Activity API.
+     */
+    fun processActivityTransitionResult(context: Context, result: ActivityTransitionResult) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+
+        for (event in result.transitionEvents) {
+            Log.d(TAG, "Android Activity Transition: activity=${getActivityName(event.activityType)}, transition=${if (event.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER) "ENTER" else "EXIT"}")
+
+            when (event.activityType) {
+                DetectedActivity.IN_VEHICLE -> {
+                    if (event.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER) {
+                        prefs.edit()
+                            .putBoolean(KEY_IS_MOVING_IN_CAR, true)
+                            .putBoolean(KEY_IS_CURRENTLY_WALKING, false)
+                            .putBoolean(KEY_EXPLICIT_VEHICLE_EXIT, false)
+                            .putInt(KEY_LAST_DETECTED_ACTIVITY_TYPE, DetectedActivity.IN_VEHICLE)
+                            .putLong(KEY_STATIONARY_START_TIME, 0L)
+                            .apply()
+                        removeGeofences(context)
+                    } else if (event.transitionType == ActivityTransition.ACTIVITY_TRANSITION_EXIT) {
+                        Log.d(TAG, "Android Activity API: IN_VEHICLE (EXIT). Recording vehicle stop.")
+                        prefs.edit()
+                            .putBoolean(KEY_EXPLICIT_VEHICLE_EXIT, true)
+                            .putLong(KEY_CAR_STOP_TIME, now)
+                            .apply()
+                        armCandidateStopFromCurrentLocation(context)
+                    }
+                }
+                DetectedActivity.WALKING, DetectedActivity.ON_FOOT, DetectedActivity.RUNNING -> {
+                    if (event.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER) {
+                        Log.d(TAG, "Android Activity API: User started WALKING.")
+                        prefs.edit()
+                            .putBoolean(KEY_IS_CURRENTLY_WALKING, true)
+                            .putLong(KEY_LAST_WALKING_ACTIVITY_TIME, now)
+                            .putInt(KEY_LAST_DETECTED_ACTIVITY_TYPE, event.activityType)
+                            .apply()
+                        checkWalkingDepartureAutoSave(context)
+                    } else if (event.transitionType == ActivityTransition.ACTIVITY_TRANSITION_EXIT) {
+                        Log.d(TAG, "Android Activity API: User paused WALKING.")
+                        prefs.edit()
+                            .putBoolean(KEY_IS_CURRENTLY_WALKING, false)
+                            .putLong(KEY_LAST_WALKING_ACTIVITY_TIME, now)
+                            .apply()
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Checks if walking departure requirements are met when Android Activity API detects walking.
+     */
+    fun checkWalkingDepartureAutoSave(context: Context) {
+        // Suppress if phone is still connected to car Bluetooth
+        if (com.example.util.BluetoothDeviceHelper.isAnyCarBluetoothConnected(context)) {
+            Log.d(TAG, "checkWalkingDepartureAutoSave: Car Bluetooth is currently connected. Suppressing.")
+            return
+        }
+
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val wasMovingInCar = prefs.getBoolean(KEY_IS_MOVING_IN_CAR, false)
+        val isArmed = prefs.getBoolean(KEY_IS_GEOFENCE_ARMED, false)
+        val stopLat = prefs.getFloat(KEY_CAR_STOP_LAT, 0f).toDouble()
+        val stopLng = prefs.getFloat(KEY_CAR_STOP_LNG, 0f).toDouble()
+        val stopTime = prefs.getLong(KEY_CAR_STOP_TIME, 0L)
+        val centerLat = prefs.getFloat(KEY_GEOFENCE_CENTER_LAT, 0f).toDouble()
+        val centerLng = prefs.getFloat(KEY_GEOFENCE_CENTER_LNG, 0f).toDouble()
+        val armedTime = prefs.getLong(KEY_GEOFENCE_ARMED_TIME, 0L)
+        val now = System.currentTimeMillis()
+
+        val refLat = if (stopLat != 0.0) stopLat else centerLat
+        val refLng = if (stopLng != 0.0) stopLng else centerLng
+        if (refLat == 0.0 || refLng == 0.0) return
+
+        val refTime = if (stopTime > 0L) stopTime else armedTime
+        val isRecentVehicleSession = wasMovingInCar || isArmed || (refTime > 0L && (now - refTime) < 45 * 60 * 1000L)
+        if (!isRecentVehicleSession) return
+
+        val lastAutoSave = prefs.getLong(KEY_LAST_AUTO_SAVE_TIME, 0L)
+        if (now - lastAutoSave < 90_000L) return
+
+        // Verify with Android Activity API
+        if (!isWalkingAccordingToActivityApi(context)) {
+            Log.d(TAG, "checkWalkingDepartureAutoSave: Activity API does not confirm walking. Suppressing.")
+            return
+        }
+
+        val curLoc = com.example.sensor.LocationHelper.lastKnownLocation
+            ?: com.example.sensor.LocationHelper.getPersistedLocation(context)
+
+        var distance = 0f
+        if (curLoc != null && curLoc.latitude != 0.0 && curLoc.longitude != 0.0) {
+            val dist = FloatArray(1)
+            android.location.Location.distanceBetween(refLat, refLng, curLoc.latitude, curLoc.longitude, dist)
+            distance = dist[0]
+        }
+
+        val stepsAtStop = prefs.getInt(KEY_STEPS_AT_STOP, -1)
+        val curSteps = prefs.getInt(KEY_CURRENT_STEP_COUNT, -1)
+        val stepsTaken = if (stepsAtStop >= 0 && curSteps >= stepsAtStop) (curSteps - stepsAtStop) else 0
+
+        // Red-light safeguard: Require physical departure away from vehicle OR concrete footsteps.
+        // Never trigger at 0m just because geofence was armed at a red light!
+        val hasWalkedAway = (distance >= 15f && (curSteps < 0 || stepsTaken >= 6)) || stepsTaken >= 10
+        if (hasWalkedAway) {
+            Log.d(TAG, "Android Activity API confirms walking departure ($distance m, $stepsTaken steps). Auto-saving car at ($refLat, $refLng)!")
+            prefs.edit()
+                .putBoolean(KEY_IS_MOVING_IN_CAR, false)
+                .putLong(KEY_STATIONARY_START_TIME, 0L)
+                .putBoolean(KEY_IS_GEOFENCE_ARMED, false)
+                .putLong(KEY_LAST_AUTO_SAVE_TIME, now)
+                .apply()
+            triggerWalkingAutoSave(context, refLat, refLng)
+        }
+    }
+
+    /**
+     * Arms candidate stop location from current GPS fix when vehicle exit is detected.
+     */
+    fun armCandidateStopFromCurrentLocation(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val candidateLat = prefs.getFloat(KEY_CAR_STOP_LAT, 0f).toDouble()
+        val candidateLng = prefs.getFloat(KEY_CAR_STOP_LNG, 0f).toDouble()
+        val lastStopTime = prefs.getLong(KEY_CAR_STOP_TIME, 0L)
+        val now = System.currentTimeMillis()
+        val isCandidateFresh = candidateLat != 0.0 && candidateLng != 0.0 && (now - lastStopTime < 60_000L)
+
+        if (!isCandidateFresh) {
+            CoroutineScope(Dispatchers.IO).launch {
+                val loc = withTimeoutOrNull(4000L) {
+                    com.example.sensor.LocationHelper.getLocationForAutoPark(context)
+                        ?: com.example.sensor.LocationHelper.getCurrentLocation(context)
+                } ?: com.example.sensor.LocationHelper.lastKnownLocation
+                  ?: com.example.sensor.LocationHelper.getPersistedLocation(context)
+
+                if (loc != null && (loc.latitude != 0.0 || loc.longitude != 0.0)) {
+                    val resolvedLat = loc.latitude
+                    val resolvedLng = loc.longitude
+                    prefs.edit()
+                        .putBoolean(KEY_CAR_STOP_LOCKED, true)
+                        .putFloat(KEY_CAR_STOP_LAT, resolvedLat.toFloat())
+                        .putFloat(KEY_CAR_STOP_LNG, resolvedLng.toFloat())
+                        .putFloat(KEY_CAR_STOP_ALT, loc.altitude.toFloat())
+                        .putFloat(KEY_CAR_STOP_ACC, loc.accuracy)
+                        .putLong(KEY_CAR_STOP_TIME, System.currentTimeMillis())
+                        .apply()
+                    Log.d(TAG, "Arming geofence perimeter around fix ($resolvedLat, $resolvedLng, ±${loc.accuracy}m).")
+                    registerCarPerimeterGeofence(context, resolvedLat, resolvedLng)
+                }
+            }
+        } else {
+            prefs.edit().putBoolean(KEY_CAR_STOP_LOCKED, true).apply()
+            Log.d(TAG, "Arming geofence perimeter around fresh candidate ($candidateLat, $candidateLng).")
+            registerCarPerimeterGeofence(context, candidateLat, candidateLng)
+        }
     }
 
     /**
@@ -491,15 +831,59 @@ object GeofenceManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_GEOFENCE_ENABLED, false)) return
 
+        // Car Bluetooth Connection Safeguard:
+        // If phone is currently connected to car Bluetooth, user is inside the vehicle!
+        // Suppress red light stop detection, geofence arming, and walk-away auto-save.
+        if (com.example.util.BluetoothDeviceHelper.isAnyCarBluetoothConnected(context)) {
+            val wasArmed = prefs.getBoolean(KEY_IS_GEOFENCE_ARMED, false)
+            if (wasArmed) {
+                removeGeofences(context)
+            }
+            prefs.edit()
+                .putBoolean(KEY_IS_MOVING_IN_CAR, true)
+                .putBoolean(KEY_CAR_STOP_LOCKED, false)
+                .putLong(KEY_STATIONARY_START_TIME, 0L)
+                .remove(KEY_STEPS_AT_STOP)
+                .apply()
+            return
+        }
+
         val now = System.currentTimeMillis()
         val wasMovingInCar = prefs.getBoolean(KEY_IS_MOVING_IN_CAR, false)
+        val isLocked = prefs.getBoolean(KEY_CAR_STOP_LOCKED, false)
         val candidateLat = prefs.getFloat(KEY_CAR_STOP_LAT, 0f).toDouble()
         val candidateLng = prefs.getFloat(KEY_CAR_STOP_LNG, 0f).toDouble()
         val lastStopTime = prefs.getLong(KEY_CAR_STOP_TIME, 0L)
         val isHighAccuracy = accuracy in 0.001f..HIGH_ACCURACY_THRESHOLD_METERS
 
-        // 1. If moving at driving speed (>= 2.8 m/s ~ 10 km/h)
-        if (speedMps >= 2.8f) {
+        // Calculate derived speed if Android Location.hasSpeed() is false or speed <= 0
+        val lastTime = prefs.getLong(KEY_LAST_DRIVING_TIME, 0L)
+        val lastLat = prefs.getFloat(KEY_LAST_DRIVING_LAT, 0f).toDouble()
+        val lastLng = prefs.getFloat(KEY_LAST_DRIVING_LNG, 0f).toDouble()
+
+        var calculatedSpeed = 0f
+        val timeDeltaMs = now - lastTime
+        if (lastTime > 0L && timeDeltaMs in 1500L..60_000L && lastLat != 0.0 && lastLng != 0.0 && latitude != 0.0 && longitude != 0.0) {
+            val distArray = FloatArray(1)
+            android.location.Location.distanceBetween(lastLat, lastLng, latitude, longitude, distArray)
+            calculatedSpeed = distArray[0] / (timeDeltaMs / 1000f)
+        }
+
+        val effectiveSpeed = if (speedMps > 0f) speedMps else calculatedSpeed
+
+        // Save last driving reference fix
+        if (latitude != 0.0 && longitude != 0.0) {
+            prefs.edit()
+                .putFloat(KEY_LAST_DRIVING_LAT, latitude.toFloat())
+                .putFloat(KEY_LAST_DRIVING_LNG, longitude.toFloat())
+                .putFloat(KEY_LAST_DRIVING_ALT, altitude.toFloat())
+                .putFloat(KEY_LAST_DRIVING_ACC, accuracy)
+                .putLong(KEY_LAST_DRIVING_TIME, now)
+                .apply()
+        }
+
+        // 1. Vehicle driving condition (effectiveSpeed >= 2.2 m/s ~ 8 km/h)
+        if (effectiveSpeed >= 2.2f) {
             if (isHighAccuracy) {
                 addHighAccuracyFix(context, latitude, longitude, altitude, accuracy, now)
             }
@@ -507,102 +891,105 @@ object GeofenceManager {
             val wasArmed = prefs.getBoolean(KEY_IS_GEOFENCE_ARMED, false)
             prefs.edit()
                 .putBoolean(KEY_IS_MOVING_IN_CAR, true)
+                .putBoolean(KEY_CAR_STOP_LOCKED, false)
                 .putFloat(KEY_CAR_STOP_LAT, latitude.toFloat())
                 .putFloat(KEY_CAR_STOP_LNG, longitude.toFloat())
                 .putFloat(KEY_CAR_STOP_ALT, altitude.toFloat())
                 .putFloat(KEY_CAR_STOP_ACC, accuracy)
                 .putLong(KEY_CAR_STOP_TIME, now)
-                .putLong(KEY_STATIONARY_START_TIME, 0L) // reset dwell timer on movement
+                .putLong(KEY_STATIONARY_START_TIME, 0L)
                 .putLong(KEY_LAST_STATIONARY_DWELL_MS, 0L)
                 .remove(KEY_STEPS_AT_STOP)
                 .putBoolean(KEY_EXPLICIT_VEHICLE_EXIT, false)
                 .putBoolean(KEY_UNDERGROUND_FALLBACK_ACTIVE, false)
                 .apply()
 
-            // If a geofence was armed at a red light/traffic stop, disarm it when vehicle drives again
             if (wasArmed) {
-                Log.d(TAG, "Vehicle resumed driving (speed: ${speedMps} m/s). Disarming geofence to prevent traffic churn.")
+                Log.d(TAG, "Vehicle driving detected (speed: ${effectiveSpeed} m/s). Disarming geofence.")
                 removeGeofences(context)
             }
-        } else if (speedMps < 1.2f) {
-            // 2. Stopped or parked
+        } else if (effectiveSpeed < 1.5f) {
+            // 2. Vehicle stopped condition
             if (wasMovingInCar || (now - lastStopTime < 15 * 60 * 1000L)) {
-                // Underground Parking Safeguard Check:
-                // If vehicle stops but current GPS accuracy degrades beyond 30m or signal is lost,
-                // fall back to the last known reliable fix (accuracy <= 15m) near the entrance.
-                val isDegradedAccuracy = accuracy > DEGRADED_ACCURACY_THRESHOLD_METERS || accuracy <= 0f
-                val lastReliable = if (isDegradedAccuracy) getLastReliableFix(context) else null
+                if (!isLocked) {
+                    val isDegradedAccuracy = accuracy > DEGRADED_ACCURACY_THRESHOLD_METERS || accuracy <= 0f
+                    val lastReliable = if (isDegradedAccuracy) getLastReliableFix(context) else null
 
-                val effectiveLat: Double
-                val effectiveLng: Double
-                val effectiveAlt: Double
-                val effectiveAcc: Float
-                val usedUndergroundFallback: Boolean
+                    val effectiveLat: Double
+                    val effectiveLng: Double
+                    val effectiveAlt: Double
+                    val effectiveAcc: Float
+                    val usedUndergroundFallback: Boolean
 
-                if (isDegradedAccuracy && lastReliable != null) {
-                    effectiveLat = lastReliable.latitude
-                    effectiveLng = lastReliable.longitude
-                    effectiveAlt = lastReliable.altitude
-                    effectiveAcc = lastReliable.accuracy
-                    usedUndergroundFallback = true
-                    Log.w(TAG, "Underground parking safeguard: Current accuracy degraded to ${accuracy}m (> 30m). Falling back to entrance fix: ($effectiveLat, $effectiveLng, ±${effectiveAcc}m).")
-                } else {
-                    effectiveLat = latitude
-                    effectiveLng = longitude
-                    effectiveAlt = altitude
-                    effectiveAcc = accuracy
-                    usedUndergroundFallback = false
-                    if (isHighAccuracy) {
-                        addHighAccuracyFix(context, latitude, longitude, altitude, accuracy, now)
+                    if (isDegradedAccuracy && lastReliable != null) {
+                        effectiveLat = lastReliable.latitude
+                        effectiveLng = lastReliable.longitude
+                        effectiveAlt = lastReliable.altitude
+                        effectiveAcc = lastReliable.accuracy
+                        usedUndergroundFallback = true
+                        Log.w(TAG, "Underground parking safeguard: Current accuracy degraded (${accuracy}m). Using entrance fix: ($effectiveLat, $effectiveLng).")
+                    } else {
+                        effectiveLat = latitude
+                        effectiveLng = longitude
+                        effectiveAlt = altitude
+                        effectiveAcc = accuracy
+                        usedUndergroundFallback = false
+                        if (isHighAccuracy) {
+                            addHighAccuracyFix(context, latitude, longitude, altitude, accuracy, now)
+                        }
                     }
+
+                    val editor = prefs.edit()
+                        .putBoolean(KEY_CAR_STOP_LOCKED, true)
+                        .putFloat(KEY_CAR_STOP_LAT, effectiveLat.toFloat())
+                        .putFloat(KEY_CAR_STOP_LNG, effectiveLng.toFloat())
+                        .putFloat(KEY_CAR_STOP_ALT, effectiveAlt.toFloat())
+                        .putFloat(KEY_CAR_STOP_ACC, effectiveAcc)
+                        .putLong(KEY_CAR_STOP_TIME, now)
+                        .putBoolean(KEY_UNDERGROUND_FALLBACK_ACTIVE, usedUndergroundFallback)
+
+                    if (usedUndergroundFallback) {
+                        editor.putFloat(KEY_UNDERGROUND_ORIGINAL_ACC, accuracy)
+                        editor.putFloat(KEY_UNDERGROUND_FALLBACK_ACC, effectiveAcc)
+                        editor.putLong(KEY_UNDERGROUND_FALLBACK_TIME, lastReliable?.timestamp ?: now)
+                    }
+
+                    val curSteps = prefs.getInt(KEY_CURRENT_STEP_COUNT, -1)
+                    if (curSteps >= 0 && !prefs.contains(KEY_STEPS_AT_STOP)) {
+                        editor.putInt(KEY_STEPS_AT_STOP, curSteps)
+                    }
+
+                    var stationaryStart = prefs.getLong(KEY_STATIONARY_START_TIME, 0L)
+                    if (stationaryStart == 0L) {
+                        stationaryStart = now
+                        editor.putLong(KEY_STATIONARY_START_TIME, stationaryStart)
+                    }
+                    editor.apply()
+                    Log.d(TAG, "Vehicle stopped! Locked candidate parking spot at ($effectiveLat, $effectiveLng).")
                 }
 
-                // Ensure candidate coordinates are persistently updated in SharedPreferences immediately to survive LMK
-                val editor = prefs.edit()
-                    .putFloat(KEY_CAR_STOP_LAT, effectiveLat.toFloat())
-                    .putFloat(KEY_CAR_STOP_LNG, effectiveLng.toFloat())
-                    .putFloat(KEY_CAR_STOP_ALT, effectiveAlt.toFloat())
-                    .putFloat(KEY_CAR_STOP_ACC, effectiveAcc)
-                    .putLong(KEY_CAR_STOP_TIME, now)
-                    .putBoolean(KEY_UNDERGROUND_FALLBACK_ACTIVE, usedUndergroundFallback)
-
-                if (usedUndergroundFallback) {
-                    editor.putFloat(KEY_UNDERGROUND_ORIGINAL_ACC, accuracy)
-                    editor.putFloat(KEY_UNDERGROUND_FALLBACK_ACC, effectiveAcc)
-                    editor.putLong(KEY_UNDERGROUND_FALLBACK_TIME, lastReliable?.timestamp ?: now)
-                }
-
-                // Snapshot device step counter when stopping to track footsteps away from vehicle
-                val curSteps = prefs.getInt(KEY_CURRENT_STEP_COUNT, -1)
-                if (curSteps >= 0 && !prefs.contains(KEY_STEPS_AT_STOP)) {
-                    editor.putInt(KEY_STEPS_AT_STOP, curSteps)
-                }
-
-                var stationaryStart = prefs.getLong(KEY_STATIONARY_START_TIME, 0L)
-                if (stationaryStart == 0L) {
-                    stationaryStart = now
-                    editor.putLong(KEY_STATIONARY_START_TIME, stationaryStart)
-                }
-                editor.apply()
-
+                val stationaryStart = prefs.getLong(KEY_STATIONARY_START_TIME, now)
                 val dwellMs = now - stationaryStart
                 val explicitExit = prefs.getBoolean(KEY_EXPLICIT_VEHICLE_EXIT, false)
                 val isArmed = prefs.getBoolean(KEY_IS_GEOFENCE_ARMED, false)
+                val curSteps = prefs.getInt(KEY_CURRENT_STEP_COUNT, -1)
+                val stepsAtStop = prefs.getInt(KEY_STEPS_AT_STOP, -1)
+                val stepsTaken = if (stepsAtStop >= 0 && curSteps >= stepsAtStop) (curSteps - stepsAtStop) else 0
+                val hasStartedWalking = stepsTaken >= 8
 
-                // Enforce 20-30s stationary dwell timer OR explicit IN_VEHICLE (EXIT) event
-                // so red lights and stop-and-go traffic don't churn geofences
-                if (!isArmed && (dwellMs >= STATIONARY_DWELL_TIMER_MS || explicitExit)) {
-                    Log.d(TAG, "Stationary dwell timer satisfied (${dwellMs}ms >= ${STATIONARY_DWELL_TIMER_MS}ms) or explicit exit ($explicitExit). Arming geofence (${DEFAULT_PERIMETER_RADIUS_METERS}m).")
-                    prefs.edit().putLong(KEY_LAST_STATIONARY_DWELL_MS, dwellMs).apply()
-                    registerCarPerimeterGeofence(context, effectiveLat, effectiveLng, DEFAULT_PERIMETER_RADIUS_METERS)
-                } else if (!isArmed) {
-                    Log.d(TAG, "Vehicle stationary for ${dwellMs}ms. Waiting for ${STATIONARY_DWELL_TIMER_MS / 1000}s dwell timer before arming geofence to prevent red-light churn.")
+                if (!isArmed && (dwellMs >= STATIONARY_DWELL_TIMER_MS || explicitExit || hasStartedWalking)) {
+                    val lockLat = prefs.getFloat(KEY_CAR_STOP_LAT, 0f).toDouble()
+                    val lockLng = prefs.getFloat(KEY_CAR_STOP_LNG, 0f).toDouble()
+                    if (lockLat != 0.0 && lockLng != 0.0) {
+                        Log.d(TAG, "Arming geofence perimeter around locked stop ($lockLat, $lockLng). Dwell: ${dwellMs}ms.")
+                        prefs.edit().putLong(KEY_LAST_STATIONARY_DWELL_MS, dwellMs).apply()
+                        registerCarPerimeterGeofence(context, lockLat, lockLng, DEFAULT_PERIMETER_RADIUS_METERS)
+                    }
                 }
             }
         }
 
-        // 3. Flawless walking departure check:
-        // If user was moving in car, or geofence is armed, or car stopped within last 2 hours:
+        // 3. Walking departure check
         val centerLat = prefs.getFloat(KEY_GEOFENCE_CENTER_LAT, 0f).toDouble()
         val centerLng = prefs.getFloat(KEY_GEOFENCE_CENTER_LNG, 0f).toDouble()
         val refLat = if (candidateLat != 0.0) candidateLat else centerLat
@@ -616,9 +1003,20 @@ object GeofenceManager {
         if (hasValidParkPoint && isRecentSession) {
             val dist = FloatArray(1)
             android.location.Location.distanceBetween(refLat, refLng, latitude, longitude, dist)
-            if (dist[0] >= DEFAULT_PERIMETER_RADIUS_METERS && speedMps < 3.2f) {
-                Log.d(TAG, "Walking detected: User moved ${dist[0]}m (>= ${DEFAULT_PERIMETER_RADIUS_METERS}m) away from parked car. Auto-saving car location!")
-                // Reset moving in car, dwell timer, and clear armed state
+
+            val stepsAtStop = prefs.getInt(KEY_STEPS_AT_STOP, -1)
+            val curSteps = prefs.getInt(KEY_CURRENT_STEP_COUNT, -1)
+            val stepsTaken = if (stepsAtStop >= 0 && curSteps >= stepsAtStop) (curSteps - stepsAtStop) else 0
+            val hasPhysicalSteps = curSteps < 0 || stepsTaken >= 6
+
+            val isPedestrianSpeed = effectiveSpeed in 0.3f..2.2f || effectiveSpeed == 0f
+            val isWalkingConfirmed = isWalkingAccordingToActivityApi(context) && hasPhysicalSteps
+            val hasWalkedAway = (dist[0] >= 15f && isPedestrianSpeed && isWalkingConfirmed) ||
+                    (dist[0] >= DEFAULT_PERIMETER_RADIUS_METERS && effectiveSpeed < 2.5f && isWalkingConfirmed) ||
+                    (stepsTaken >= 10 && dist[0] >= 12f)
+
+            if (hasWalkedAway) {
+                Log.d(TAG, "Walking departure confirmed! Distance: ${dist[0]}m away from locked car position ($refLat, $refLng) ($stepsTaken steps). Auto-saving!")
                 prefs.edit()
                     .putBoolean(KEY_IS_MOVING_IN_CAR, false)
                     .putLong(KEY_STATIONARY_START_TIME, 0L)
@@ -685,7 +1083,14 @@ object GeofenceManager {
             return false
         }
 
-        Log.d(TAG, "Safeguard verified: valid parking coordinates and walking departure confirmed.")
+        // 4. CRITICAL: Android Activity API Walking Verification
+        // Save the location ONLY when the Android Activity API says that the user is walking!
+        if (!isWalkingAccordingToActivityApi(context)) {
+            Log.w(TAG, "Safeguard: Android Activity API does NOT say the user is walking. Rejecting false trigger to prevent misfire.")
+            return false
+        }
+
+        Log.d(TAG, "Safeguard verified: valid parking coordinates and walking departure confirmed by Android Activity API.")
         return true
     }
 
@@ -853,7 +1258,7 @@ object GeofenceManager {
             if (savedLng != 0.0) savedLng else fallbackLng
         }
 
-        // Mark that user was moving in car and stopped at this spot
+        // Mark that user was moving in car and stopped at this spot, with confirmed walking in Activity API
         prefs.edit()
             .putBoolean(KEY_IS_MOVING_IN_CAR, true)
             .putFloat(KEY_CAR_STOP_LAT, carLat.toFloat())
@@ -862,6 +1267,10 @@ object GeofenceManager {
             .putFloat(KEY_GEOFENCE_CENTER_LNG, carLng.toFloat())
             .putLong(KEY_CAR_STOP_TIME, System.currentTimeMillis())
             .putBoolean(KEY_IS_GEOFENCE_ARMED, true)
+            .putBoolean(KEY_IS_CURRENTLY_WALKING, true)
+            .putLong(KEY_LAST_WALKING_ACTIVITY_TIME, System.currentTimeMillis())
+            .putInt(KEY_LAST_DETECTED_ACTIVITY_TYPE, DetectedActivity.WALKING)
+            .putInt(KEY_LAST_DETECTED_ACTIVITY_CONFIDENCE, 100)
             .apply()
 
         // Fire simulation intent to GeofenceTransitionsReceiver
@@ -872,6 +1281,7 @@ object GeofenceManager {
             // Simulated user walking location (e.g. 70 meters away, outside the 50m perimeter)
             putExtra("simulated_lat", carLat + 0.0007)
             putExtra("simulated_lng", carLng + 0.0007)
+            putExtra("is_simulated", true)
         }
         context.sendBroadcast(intent)
     }

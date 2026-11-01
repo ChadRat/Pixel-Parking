@@ -93,7 +93,8 @@ fun TriangularIndicator(
  * Interactive Parking Timer Pill Component:
  * - Fixed digit positioning with overlay triangular arrows (up and down) that never cause layout shift.
  * - When timer is stopped, both the icon and the color parts of the box turn red.
- * - No seconds display.
+ * - Displays MM:SS dynamically counting seconds when timer only counts minutes or remaining time is under an hour (< 3600s).
+ * - Displays HH:MM when remaining time is 1 hour or more, or during edit mode.
  * - Single robust gesture detector for Tap, Drag, and 450ms Long-Press Stop.
  * - Tap 1: Edit hours (arrows visible above and below hours digits).
  * - Tap 2: Edit minutes (arrows visible above and below minutes digits).
@@ -140,8 +141,17 @@ fun ParkingTimerButton(
         else -> remainingSeconds.coerceAtLeast(0L)
     }
 
-    val hours = (effectiveRemaining / 3600).toInt()
-    val minutes = ((effectiveRemaining % 3600) / 60).toInt()
+    val totalHours = (effectiveRemaining / 3600).toInt()
+    val totalMinutes = ((effectiveRemaining % 3600) / 60).toInt()
+    val totalSeconds = (effectiveRemaining % 60).toInt()
+
+    // When timer is not in edit mode and remaining time has no hours (timer only counts minutes or time left < 1 hour),
+    // dynamically display minutes in the first two digits and seconds in the second two digits (MM:SS).
+    // In edit mode or when >= 1 hour remains, display HH:MM.
+    val showMinutesAndSeconds = (editMode == TimerPillEditMode.IDLE && totalHours == 0)
+
+    val firstDigits = if (showMinutesAndSeconds) totalMinutes else totalHours
+    val secondDigits = if (showMinutesAndSeconds) totalSeconds else totalMinutes
 
     // Determine target pill color:
     // If stopped or holding to stop -> Red
@@ -365,7 +375,7 @@ fun ParkingTimerButton(
                         }
 
                         Text(
-                            text = String.format(Locale.US, "%02d", hours),
+                            text = String.format(Locale.US, "%02d", firstDigits),
                             fontFamily = HeavyRoundFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
@@ -413,7 +423,7 @@ fun ParkingTimerButton(
                         }
 
                         Text(
-                            text = String.format(Locale.US, "%02d", minutes),
+                            text = String.format(Locale.US, "%02d", secondDigits),
                             fontFamily = HeavyRoundFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,

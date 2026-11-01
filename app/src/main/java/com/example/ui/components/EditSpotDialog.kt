@@ -8,6 +8,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,10 +19,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -60,6 +64,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,9 +74,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -82,9 +92,13 @@ import com.example.data.entity.ParkingSpot
 import com.example.data.entity.isBluetoothEntry
 import com.example.data.entity.isCustomFarAwayEntry
 import com.example.data.entity.isGeofenceEntry
+import com.example.data.entity.isUndergroundFallback
+import androidx.compose.ui.platform.LocalContext
 import com.example.ui.components.CustomFarAwayIcon
 import com.example.ui.components.GeofenceIcon
 import com.example.ui.i18n.LocalAppStrings
+import com.example.util.HapticHelper
+import com.example.util.HapticProfile
 import java.util.Locale
 
 private data class FloorOption(val id: String, val label: String, val aliases: List<String>)
@@ -108,8 +122,38 @@ fun EditSpotDialog(
     isRefreshingGps: Boolean = false,
     onSearchAddress: (suspend (String) -> Pair<Double, Double>?)? = null
 ) {
+    val context = LocalContext.current
     val strings = LocalAppStrings.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val density = LocalDensity.current
+    val isImeVisible = WindowInsets.ime.getBottom(density) > 0
+    var isFieldFocused by remember { mutableStateOf(false) }
+    var keyboardDismissedByBack by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isImeVisible) {
+        if (!isImeVisible) {
+            keyboardDismissedByBack = false
+        }
+    }
+
+    // Blur the rest of the screen while edit menu is open, just like the Bluetooth car menu does
+    DisposableEffect(Unit) {
+        viewModel?.setEditSpotSheetOpen(true)
+        onDispose {
+            viewModel?.setEditSpotSheetOpen(false)
+        }
+    }
+
+    // When the user is typing in a text box and presses Back, only close the keyboard, not the edit menu
+    BackHandler(enabled = (isImeVisible || isFieldFocused) && !keyboardDismissedByBack) {
+        keyboardDismissedByBack = true
+        isFieldFocused = false
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+    }
 
     val initialName = remember(initialSpot?.spotName, strings) {
         val raw = initialSpot?.spotName
@@ -420,10 +464,16 @@ fun EditSpotDialog(
                 onValueChange = { spotName = it },
                 label = { Text(strings.spotNameOrVehicleLabel) },
                 leadingIcon = {
+                    val isUnderground = initialSpot?.isUndergroundFallback == true
                     val isFarAway = initialSpot?.isCustomFarAwayEntry == true
                     val isGeo = initialSpot?.isGeofenceEntry == true
                     val isBt = initialSpot?.isBluetoothEntry == true
-                    if (isFarAway) {
+                    if (isUnderground) {
+                        UndergroundParkingIcon(
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    } else if (isFarAway) {
                         CustomFarAwayIcon(
                             modifier = Modifier.size(20.dp),
                             tint = MaterialTheme.colorScheme.primary
@@ -459,6 +509,7 @@ fun EditSpotDialog(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .onFocusChanged { if (it.isFocused) isFieldFocused = true }
                     .testTag("spot_name_input")
             )
 
@@ -468,42 +519,110 @@ fun EditSpotDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Layers,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = strings.floorOrParkingLevelLabel,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Layers,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = strings.floorOrParkingLevelLabel,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Active selected floor pill badge
+                    val currentDisplay = remember(selectedFloor, strings) {
+                        commonFloors.firstOrNull { it.label == selectedFloor || it.aliases.any { a -> a.equals(selectedFloor, ignoreCase = true) } }?.label
+                            ?: selectedFloor.ifBlank { strings.floorGroundLevel }
+                    }
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = currentDisplay,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                        )
+                    }
                 }
 
+                // Segmented Line of Floor Level Icon Buttons
+                // Exact arrangement & looks:
+                // - Far left button: outer corners (left) heavily rounded (24.dp pill cap), inner corners (right) less rounded (6.dp)
+                // - Inner buttons in the middle: all corners less rounded (6.dp)
+                // - Far right button: inner corners (left) less rounded (6.dp), outer corners (right) heavily rounded (24.dp pill cap)
+                // - Individual custom icons specifying each level (no text inside buttons)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    commonFloors.forEach { option ->
+                    commonFloors.forEachIndexed { index, option ->
                         val isSelected = selectedFloor == option.label || option.aliases.any { it.equals(selectedFloor, ignoreCase = true) }
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { selectedFloor = option.label },
-                            label = { Text(option.label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold) },
-                            shape = RoundedCornerShape(16.dp),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            ),
-                            modifier = Modifier.testTag("floor_chip_${option.id}")
-                        )
+                        val buttonShape = when {
+                            index == 0 -> RoundedCornerShape(
+                                topStart = 24.dp,
+                                bottomStart = 24.dp,
+                                topEnd = 6.dp,
+                                bottomEnd = 6.dp
+                            )
+                            index == commonFloors.lastIndex -> RoundedCornerShape(
+                                topStart = 6.dp,
+                                bottomStart = 6.dp,
+                                topEnd = 24.dp,
+                                bottomEnd = 24.dp
+                            )
+                            else -> RoundedCornerShape(6.dp)
+                        }
+
+                        val bgColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        }
+
+                        val iconColor = if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                        }
+
+                        Surface(
+                            onClick = {
+                                selectedFloor = option.label
+                                HapticHelper.performFloorButtonClick(context)
+                            },
+                            shape = buttonShape,
+                            color = bgColor,
+                            modifier = Modifier
+                                .size(width = 56.dp, height = 48.dp)
+                                .testTag("floor_chip_${option.id}")
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                FloorLevelIcon(
+                                    floorId = option.id,
+                                    tint = iconColor,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -532,6 +651,7 @@ fun EditSpotDialog(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .onFocusChanged { if (it.isFocused) isFieldFocused = true }
                     .testTag("spot_note_input")
             )
 

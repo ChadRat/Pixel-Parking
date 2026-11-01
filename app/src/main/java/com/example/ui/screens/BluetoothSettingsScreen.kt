@@ -324,7 +324,7 @@ fun BluetoothSettingsContent(
             // BACKGROUND AUTO-SAVE SETUP & RELIABILITY CARD
             item {
                 BackgroundDiagnosticBanner(
-                    showWhenAllGranted = true,
+                    showWhenAllGranted = false,
                     dismissible = false,
                     modifier = Modifier.fillMaxWidth()
                 )

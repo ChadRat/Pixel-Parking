@@ -49,9 +49,11 @@ class GeofenceTransitionsReceiver : BroadcastReceiver() {
         val isSimulated = action == GeofenceManager.ACTION_SIMULATE_GEOFENCE_EXIT
         val isGeofenceTransition = action == GeofenceManager.ACTION_GEOFENCE_TRANSITION
         val isActivityTransition = action == GeofenceManager.ACTION_ACTIVITY_TRANSITION
+        val isActivityUpdate = action == GeofenceManager.ACTION_ACTIVITY_UPDATE
         val isLocationUpdate = action == GeofenceManager.ACTION_LOCATION_UPDATE
+        val isForcedTrigger = intent.getBooleanExtra("force_trigger", false)
 
-        if (!isSimulated && !isGeofenceTransition && !isActivityTransition && !isLocationUpdate) {
+        if (!isSimulated && !isGeofenceTransition && !isActivityTransition && !isActivityUpdate && !isLocationUpdate) {
             return
         }
 
@@ -80,123 +82,84 @@ class GeofenceTransitionsReceiver : BroadcastReceiver() {
             return
         }
 
-        // --- Handle Activity Recognition Transitions ---
+        // Car Bluetooth Connection Safeguard:
+        // If phone is currently connected to car Bluetooth, user is inside the vehicle!
+        if (!isSimulated && com.example.util.BluetoothDeviceHelper.isAnyCarBluetoothConnected(context)) {
+            Log.d(TAG, "Geofence event suppressed: phone is connected to car Bluetooth (user is in vehicle).")
+            GeofenceManager.removeGeofences(context)
+            return
+        }
+
+        // --- Handle Android Activity Recognition Updates ---
+        if ((isActivityUpdate || isActivityTransition) && com.google.android.gms.location.ActivityRecognitionResult.hasResult(intent)) {
+            val result = com.google.android.gms.location.ActivityRecognitionResult.extractResult(intent)
+            if (result != null) {
+                GeofenceManager.processActivityRecognitionResult(context, result)
+            }
+        }
+
+        // --- Handle Android Activity Transitions ---
         if (isActivityTransition && ActivityTransitionResult.hasResult(intent)) {
             val result = ActivityTransitionResult.extractResult(intent)
             if (result != null) {
-                var shouldTriggerWalkAfterCar = false
-                val now = System.currentTimeMillis()
-
-                for (event in result.transitionEvents) {
-                    when (event.activityType) {
-                        DetectedActivity.IN_VEHICLE -> {
-                            if (event.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER) {
-                                Log.d(TAG, "ActivityRecognition: Entered vehicle. Marking moving in car.")
-                                prefs.edit()
-                                    .putBoolean(GeofenceManager.KEY_IS_MOVING_IN_CAR, true)
-                                    .putBoolean(GeofenceManager.KEY_EXPLICIT_VEHICLE_EXIT, false)
-                                    .putLong(GeofenceManager.KEY_STATIONARY_START_TIME, 0L)
-                                    .apply()
-                                GeofenceManager.removeGeofences(context)
-                            } else if (event.transitionType == ActivityTransition.ACTIVITY_TRANSITION_EXIT) {
-                                Log.d(TAG, "ActivityRecognition: Explicit IN_VEHICLE (EXIT) detected with high confidence (>= 70%). Recording candidate stop.")
-                                prefs.edit()
-                                    .putBoolean(GeofenceManager.KEY_EXPLICIT_VEHICLE_EXIT, true)
-                                    .putLong(GeofenceManager.KEY_CAR_STOP_TIME, now)
-                                    .apply()
-
-                                // Capture step counter snapshot at vehicle exit for pedestrian departure telemetry
-                                val curSteps = prefs.getInt(GeofenceManager.KEY_CURRENT_STEP_COUNT, -1)
-                                if (curSteps >= 0) {
-                                    prefs.edit().putInt(GeofenceManager.KEY_STEPS_AT_STOP, curSteps).apply()
-                                }
-
-                                // Arm geofence immediately around candidate car stop location
-                                val candidateLat = prefs.getFloat(GeofenceManager.KEY_CAR_STOP_LAT, 0f).toDouble()
-                                val candidateLng = prefs.getFloat(GeofenceManager.KEY_CAR_STOP_LNG, 0f).toDouble()
-                                val lastStopTime = prefs.getLong(GeofenceManager.KEY_CAR_STOP_TIME, 0L)
-                                val isCandidateFresh = candidateLat != 0.0 && candidateLng != 0.0 && (now - lastStopTime < 60_000L)
-
-                                if (!isCandidateFresh) {
-                                    val asyncPending = goAsync()
-                                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                        try {
-                                            val loc = kotlinx.coroutines.withTimeoutOrNull(4000L) {
-                                                com.example.sensor.LocationHelper.getLocationForAutoPark(context)
-                                                    ?: com.example.sensor.LocationHelper.getCurrentLocation(context)
-                                            } ?: com.example.sensor.LocationHelper.lastKnownLocation
-                                              ?: com.example.sensor.LocationHelper.getPersistedLocation(context)
-
-                                            if (loc != null && (loc.latitude != 0.0 || loc.longitude != 0.0)) {
-                                                val resolvedLat = loc.latitude
-                                                val resolvedLng = loc.longitude
-                                                prefs.edit()
-                                                    .putFloat(GeofenceManager.KEY_CAR_STOP_LAT, resolvedLat.toFloat())
-                                                    .putFloat(GeofenceManager.KEY_CAR_STOP_LNG, resolvedLng.toFloat())
-                                                    .putFloat(GeofenceManager.KEY_CAR_STOP_ALT, loc.altitude.toFloat())
-                                                    .putFloat(GeofenceManager.KEY_CAR_STOP_ACC, loc.accuracy)
-                                                    .putLong(GeofenceManager.KEY_CAR_STOP_TIME, System.currentTimeMillis())
-                                                    .apply()
-                                                Log.d(TAG, "Explicit vehicle exit: Armed geofence around live acquired fix ($resolvedLat, $resolvedLng, ±${loc.accuracy}m).")
-                                                GeofenceManager.registerCarPerimeterGeofence(context, resolvedLat, resolvedLng)
-                                            }
-                                        } finally {
-                                            asyncPending.finish()
-                                        }
-                                    }
-                                } else {
-                                    Log.d(TAG, "Explicit vehicle exit: Arming geofence perimeter around candidate ($candidateLat, $candidateLng).")
-                                    GeofenceManager.registerCarPerimeterGeofence(context, candidateLat, candidateLng)
-                                }
-                            }
-                        }
-                        DetectedActivity.WALKING, DetectedActivity.ON_FOOT, DetectedActivity.RUNNING -> {
-                            if (event.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER) {
-                                val wasMovingInCar = prefs.getBoolean(GeofenceManager.KEY_IS_MOVING_IN_CAR, false)
-                                val isArmed = prefs.getBoolean(GeofenceManager.KEY_IS_GEOFENCE_ARMED, false)
-                                val stopTime = prefs.getLong(GeofenceManager.KEY_CAR_STOP_TIME, 0L)
-                                val recentStop = (now - stopTime) < 30 * 60 * 1000L // within last 30 mins
-
-                                Log.d(TAG, "ActivityRecognition: Started walking/running. wasMovingInCar=$wasMovingInCar, isArmed=$isArmed, recentStop=$recentStop")
-                                if (wasMovingInCar || isArmed || recentStop) {
-                                    shouldTriggerWalkAfterCar = true
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (!shouldTriggerWalkAfterCar) {
-                    return
-                }
+                GeofenceManager.processActivityTransitionResult(context, result)
             }
         }
 
         // --- Handle Geofence Transitions ---
-        val isForcedTrigger = intent.getBooleanExtra("force_trigger", false)
         var isExitTransition = isSimulated || isForcedTrigger
-        if (isGeofenceTransition && !isForcedTrigger) {
+        if (isGeofenceTransition && !isForcedTrigger && !isSimulated) {
             val geofencingEvent = GeofencingEvent.fromIntent(intent)
             if (geofencingEvent != null) {
                 if (geofencingEvent.hasError()) {
                     val errorMessage = GeofenceStatusCodes.getStatusCodeString(geofencingEvent.errorCode)
                     Log.e(TAG, "Geofencing event error: $errorMessage (code ${geofencingEvent.errorCode})")
+                    return
                 } else {
                     val transitionType = geofencingEvent.geofenceTransition
                     if (transitionType == Geofence.GEOFENCE_TRANSITION_EXIT || transitionType == Geofence.GEOFENCE_TRANSITION_DWELL) {
-                        Log.d(TAG, "Geofence EXIT/DWELL transition detected (user walked out of car perimeter).")
-                        isExitTransition = true
+                        Log.d(TAG, "Geofence EXIT/DWELL transition detected (user moved out of car perimeter).")
+                        // CRITICAL: Verify with Android Activity API so that driving away does not misfire!
+                        val isWalking = GeofenceManager.isWalkingAccordingToActivityApi(context)
+                        if (!isWalking) {
+                            val curSteps = prefs.getInt(GeofenceManager.KEY_CURRENT_STEP_COUNT, -1)
+                            val stepsAtStop = prefs.getInt(GeofenceManager.KEY_STEPS_AT_STOP, -1)
+                            val stepsTaken = if (stepsAtStop >= 0 && curSteps >= stepsAtStop) (curSteps - stepsAtStop) else 0
+                            if (stepsTaken >= 8) {
+                                prefs.edit()
+                                    .putBoolean(GeofenceManager.KEY_IS_CURRENTLY_WALKING, true)
+                                    .putLong(GeofenceManager.KEY_LAST_WALKING_ACTIVITY_TIME, System.currentTimeMillis())
+                                    .putInt(GeofenceManager.KEY_LAST_DETECTED_ACTIVITY_TYPE, DetectedActivity.WALKING)
+                                    .apply()
+                                isExitTransition = true
+                            } else {
+                                Log.w(TAG, "Geofence perimeter exit detected, but Android Activity API does NOT say the user is walking (likely in vehicle/driving away). Suppressing misfire.")
+                                prefs.edit().putBoolean(GeofenceManager.KEY_IS_MOVING_IN_CAR, true).apply()
+                                GeofenceManager.removeGeofences(context)
+                                return
+                            }
+                        } else {
+                            isExitTransition = true
+                        }
                     } else {
                         Log.d(TAG, "Ignored non-exit geofence transition type: $transitionType")
                     }
                 }
             } else {
-                // If geofencingEvent is null but ACTION_GEOFENCE_TRANSITION was received, treat as valid exit
-                isExitTransition = true
+                // If geofencingEvent is null but ACTION_GEOFENCE_TRANSITION was received, verify with Activity API
+                if (GeofenceManager.isWalkingAccordingToActivityApi(context)) {
+                    isExitTransition = true
+                }
             }
         }
 
-        if (!isExitTransition && !isActivityTransition) return
+        if (!isExitTransition) return
+
+        // CRITICAL REQUIREMENT: Save the location ONLY when the Android Activity API says that the user is walking
+        if (!isSimulated && !GeofenceManager.isWalkingAccordingToActivityApi(context)) {
+            Log.w(TAG, "Auto-save blocked: Android Activity API does NOT say that the user is walking.")
+            return
+        }
 
         // Debounce: prevent duplicate saves (45s for live walking/geofence, 3s for simulation / forced trigger)
         val now = System.currentTimeMillis()

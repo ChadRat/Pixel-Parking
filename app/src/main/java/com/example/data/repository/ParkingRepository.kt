@@ -145,8 +145,12 @@ class ParkingRepository(
         parkingSpotDao.deleteSpotById(id)
     }
 
-    suspend fun clearHistory() {
-        parkingSpotDao.clearAllSpots()
+    suspend fun clearHistory(excludedIds: List<Long> = emptyList()) {
+        if (excludedIds.isEmpty()) {
+            parkingSpotDao.clearAllSpots()
+        } else {
+            parkingSpotDao.clearSpotsExcept(excludedIds)
+        }
     }
 
     suspend fun deactivateActiveSpot() {

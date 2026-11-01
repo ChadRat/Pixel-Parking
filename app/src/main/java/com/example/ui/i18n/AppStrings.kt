@@ -328,6 +328,14 @@ data class AppStrings(
     val backgroundSetupStatusReady: String get() = if (languageSection == "Γλώσσα") "Έτοιμο" else "Ready"
     val backgroundSetupStatusAction: String get() = if (languageSection == "Γλώσσα") "Ρύθμιση" else "Enable"
     val backgroundSetupActiveDesc: String get() = if (languageSection == "Γλώσσα") "Όλες οι ρυθμίσεις έχουν ολοκληρωθεί. Το σημείο στάθμευσης θα αποθηκεύεται αυτόματα." else "All permissions are configured. Your parking spot will save automatically on car disconnect."
+
+    // GPS Signal Alerts (Weak Signal & No Signal)
+    val gpsNoSignalTitle: String get() = if (languageSection == "Γλώσσα") "Δεν βρέθηκε σήμα GPS" else "No GPS Signal"
+    val gpsNoSignalMessage: String get() = if (languageSection == "Γλώσσα") "Δεν ήταν δυνατή η αποθήκευση της θέσης σας επειδή δεν υπάρχει σήμα GPS. Βεβαιωθείτε ότι οι υπηρεσίες τοποθεσίας είναι ενεργοποιημένες και μετακινηθείτε σε ανοιχτό σημείο." else "Unable to save your parking spot because no GPS satellite signal was detected. Please ensure Location is enabled and move to an area with clear sky view."
+    val gpsWeakSignalTitle: String get() = if (languageSection == "Γλώσσα") "Ασθενές σήμα GPS" else "Weak GPS Signal"
+    val gpsWeakSignalMessage: String get() = if (languageSection == "Γλώσσα") "Το σήμα GPS είναι ασθενές με εκτιμώμενη απόκλιση ±%d μ. Η αποθήκευση τώρα ενδέχεται να μην είναι ακριβής. Επιθυμείτε να δοκιμάσετε ξανά ή να αποθηκεύσετε όπως είναι;" else "GPS signal is currently weak with an estimated accuracy of ±%d m. Saving now might not pinpoint your vehicle accurately. Would you like to wait for a stronger signal or save anyway?"
+    val gpsSignalTryAgain: String get() = if (languageSection == "Γλώσσα") "Δοκιμή Ξανά" else "Try Again"
+    val gpsSignalSaveAnyway: String get() = if (languageSection == "Γλώσσα") "Αποθήκευση όπως είναι" else "Save Anyway"
 }
 
 data class TimerStrings(
