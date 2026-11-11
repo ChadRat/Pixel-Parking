@@ -330,7 +330,7 @@ class AutoParkLocationService : Service() {
         var alt = instantFix?.altitude ?: 0.0
         var accuracy = instantFix?.accuracy ?: 60f
 
-        val spotFloor = strings.floorGroundLevel
+        val spotFloor = ""
         val spotNote = strings.bluetoothDisconnectNote
 
         var savedSpotId: Long = 0L
@@ -364,8 +364,10 @@ class AutoParkLocationService : Service() {
             savedSpotId = repository.saveNewParkingSpot(spot)
             savedSpot = spot.copy(id = savedSpotId)
 
-            com.example.geofence.GeofenceManager.clearGpsBuffer(this)
-            com.example.geofence.GeofenceManager.armGeofenceAfterBluetoothSave(this, lat, lng)
+            if (com.example.geofence.GeofenceManager.isWalkAwayEnabled(this)) {
+                com.example.geofence.GeofenceManager.clearGpsBuffer(this)
+                com.example.geofence.GeofenceManager.armGeofenceAfterBluetoothSave(this, lat, lng)
+            }
 
             try {
                 com.example.wear.WearDataLayerBridge.getInstance(this).syncParkingSpot(savedSpot)
@@ -420,7 +422,9 @@ class AutoParkLocationService : Service() {
             savedSpot = spot.copy(id = savedSpotId)
             ParkingNotificationHelper.showCarParkedNotification(this, savedSpot)
             try { com.example.wear.WearDataLayerBridge.getInstance(this).syncParkingSpot(savedSpot) } catch (_: Throwable) {}
-            try { com.example.geofence.GeofenceManager.armGeofenceAfterBluetoothSave(this, bestRefinedLat, bestRefinedLng) } catch (_: Throwable) {}
+            if (com.example.geofence.GeofenceManager.isWalkAwayEnabled(this)) {
+                try { com.example.geofence.GeofenceManager.armGeofenceAfterBluetoothSave(this, bestRefinedLat, bestRefinedLng) } catch (_: Throwable) {}
+            }
         } else if (savedSpot != null) {
             val address = LocationHelper.getStreetNameOrCoordinates(this, bestRefinedLat, bestRefinedLng)
             val updatedSpot = savedSpot.copy(
@@ -433,7 +437,9 @@ class AutoParkLocationService : Service() {
             repository.updateParkingSpot(updatedSpot)
             ParkingNotificationHelper.showCarParkedNotification(this, updatedSpot)
             try { com.example.wear.WearDataLayerBridge.getInstance(this).syncParkingSpot(updatedSpot) } catch (_: Throwable) {}
-            try { com.example.geofence.GeofenceManager.armGeofenceAfterBluetoothSave(this, bestRefinedLat, bestRefinedLng) } catch (_: Throwable) {}
+            if (com.example.geofence.GeofenceManager.isWalkAwayEnabled(this)) {
+                try { com.example.geofence.GeofenceManager.armGeofenceAfterBluetoothSave(this, bestRefinedLat, bestRefinedLng) } catch (_: Throwable) {}
+            }
             Log.d(TAG, "Stage 2 refinement committed for spot $savedSpotId: $address (±${bestRefinedAcc}m)")
         }
     }
@@ -452,7 +458,6 @@ class AutoParkLocationService : Service() {
 
         return NotificationCompat.Builder(this, ParkingNotificationHelper.CHANNEL_PARKING_ALERTS)
             .setSmallIcon(R.drawable.ic_notification_car)
-            .setContentTitle(strings.appName)
             .setContentText(strings.recordingGps)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -530,8 +535,8 @@ class AutoParkLocationService : Service() {
         fun isMonitoringEnabled(context: Context): Boolean {
             return try {
                 val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                prefs.getBoolean(KEY_AUTO_MONITOR_ENABLED, true)
-            } catch (_: Throwable) { true }
+                prefs.getBoolean(KEY_AUTO_MONITOR_ENABLED, false)
+            } catch (_: Throwable) { false }
         }
 
         fun setMonitoringEnabled(context: Context, enabled: Boolean) {

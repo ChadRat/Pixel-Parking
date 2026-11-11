@@ -165,16 +165,21 @@ fun EditSpotDialog(
     }
 
     val initialFloor = remember(initialSpot?.floorLevel, strings) {
-        when (val raw = initialSpot?.floorLevel) {
-            "Ground Level", "Ισόγειο", null, "" -> strings.floorGroundLevel
-            "Level 1", "1ος Όροφος", "Επίπεδο 1" -> strings.floorLevel1
-            "Level 2", "2ος Όροφος", "Επίπεδο 2" -> strings.floorLevel2
-            "Level 3", "3ος Όροφος", "Επίπεδο 3" -> strings.floorLevel3
-            "Underground P1", "Υπόγειο -1", "Υπόγειο 1" -> strings.floorUndergroundP1
-            "Underground P2", "Υπόγειο -2", "Υπόγειο 2" -> strings.floorUndergroundP2
-            "Underground P3", "Υπόγειο -3", "Υπόγειο 3" -> strings.floorUndergroundP3
-            "Roof Deck", "Ταράτσα" -> strings.floorRoofDeck
-            else -> raw
+        val raw = initialSpot?.floorLevel?.trim()
+        if (raw.isNullOrBlank() || raw.equals("None", ignoreCase = true) || raw.equals("none", ignoreCase = true) || raw == "Κανένας" || raw == "Χωρίς όροφο") {
+            strings.floorNone
+        } else {
+            when (raw) {
+                "Ground Level", "Ισόγειο" -> strings.floorGroundLevel
+                "Level 1", "1ος Όροφος", "Επίπεδο 1" -> strings.floorLevel1
+                "Level 2", "2ος Όροφος", "Επίπεδο 2" -> strings.floorLevel2
+                "Level 3", "3ος Όροφος", "Επίπεδο 3" -> strings.floorLevel3
+                "Underground P1", "Υπόγειο -1", "Υπόγειο 1" -> strings.floorUndergroundP1
+                "Underground P2", "Υπόγειο -2", "Υπόγειο 2" -> strings.floorUndergroundP2
+                "Underground P3", "Υπόγειο -3", "Υπόγειο 3" -> strings.floorUndergroundP3
+                "Roof Deck", "Ταράτσα" -> strings.floorRoofDeck
+                else -> raw
+            }
         }
     }
 
@@ -190,6 +195,7 @@ fun EditSpotDialog(
 
     val commonFloors = remember(strings) {
         listOf(
+            FloorOption("none", strings.floorNone, listOf("None", "none", "Κανένας", "Χωρίς όροφο", "")),
             FloorOption("ground", strings.floorGroundLevel, listOf("Ground Level", "Ισόγειο")),
             FloorOption("lvl1", strings.floorLevel1, listOf("Level 1", "1ος Όροφος", "Επίπεδο 1")),
             FloorOption("lvl2", strings.floorLevel2, listOf("Level 2", "2ος Όροφος", "Επίπεδο 2")),
@@ -542,7 +548,7 @@ fun EditSpotDialog(
                     // Active selected floor pill badge
                     val currentDisplay = remember(selectedFloor, strings) {
                         commonFloors.firstOrNull { it.label == selectedFloor || it.aliases.any { a -> a.equals(selectedFloor, ignoreCase = true) } }?.label
-                            ?: selectedFloor.ifBlank { strings.floorGroundLevel }
+                            ?: selectedFloor.ifBlank { strings.floorNone }
                     }
                     Surface(
                         color = MaterialTheme.colorScheme.primary,
@@ -627,33 +633,6 @@ fun EditSpotDialog(
                 }
             }
 
-            // Notes / Pillar Field
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                label = { Text(strings.notesOrPillarLabel) },
-                placeholder = { Text(strings.notesOrPillarPlaceholder) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Notes,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                },
-                maxLines = 3,
-                shape = RoundedCornerShape(18.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onFocusChanged { if (it.isFocused) isFieldFocused = true }
-                    .testTag("spot_note_input")
-            )
 
             // Bottom Action Buttons
             Row(
@@ -676,12 +655,17 @@ fun EditSpotDialog(
 
                 Button(
                     onClick = {
-                        if (initialSpot != null) {
-                            onSave(spotName, selectedFloor, note, null, null, null)
-                        } else if (currentLocation != null) {
-                            onSave(spotName, selectedFloor, note, currentLocation.latitude, currentLocation.longitude, currentAddress)
+                        val floorToSave = if (selectedFloor == strings.floorNone || selectedFloor.equals("none", ignoreCase = true) || selectedFloor.isBlank()) {
+                            ""
                         } else {
-                            onSave(spotName, selectedFloor, note, null, null, null)
+                            selectedFloor.trim()
+                        }
+                        if (initialSpot != null) {
+                            onSave(spotName, floorToSave, note, null, null, null)
+                        } else if (currentLocation != null) {
+                            onSave(spotName, floorToSave, note, currentLocation.latitude, currentLocation.longitude, currentAddress)
+                        } else {
+                            onSave(spotName, floorToSave, note, null, null, null)
                         }
                         onDismiss()
                     },

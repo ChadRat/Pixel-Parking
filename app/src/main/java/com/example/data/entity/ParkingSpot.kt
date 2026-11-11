@@ -56,6 +56,7 @@ val ParkingSpot.isCustomFarAwayEntry: Boolean
             note.contains("Dev Custom Coordinates", ignoreCase = true) ||
             note.contains("Custom Coordinates", ignoreCase = true) ||
             note.contains("Far Away", ignoreCase = true) ||
+            note.contains("Shared Maps Link", ignoreCase = true) ||
             bluetoothDeviceName == "Custom Coordinates" ||
             bluetoothDeviceName?.contains("Custom Coordinates", ignoreCase = true) == true ||
             spotName.contains("Custom Far Away", ignoreCase = true)

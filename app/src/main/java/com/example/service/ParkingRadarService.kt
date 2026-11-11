@@ -63,8 +63,7 @@ class ParkingRadarService : Service() {
 
         return NotificationCompat.Builder(this, ParkingNotificationHelper.CHANNEL_RADAR_SERVICE)
             .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setContentTitle(title)
-            .setContentText(distanceText)
+            .setContentText("$title • $distanceText")
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, strings.notificationStopGuidance, pendingStopIntent)

@@ -117,14 +117,13 @@ object ParkingNotificationHelper {
         )
 
         val text = if (strings.languageSection == "Γλώσσα") {
-            "Συνδέθηκε με $carName • Αυτόματη αποθήκευση ενεργή"
+            "Συνδέθηκε BT ($carName) • Αναμονή αποσύνδεσης BT"
         } else {
-            "Connected to $carName • Auto-save active"
+            "BT connected ($carName) • Waiting for BT disconnect"
         }
 
         return NotificationCompat.Builder(context, CHANNEL_CAR_CONNECTION_WATCHER)
             .setSmallIcon(R.drawable.ic_notification_car)
-            .setContentTitle(strings.appName)
             .setContentText(text)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -149,21 +148,20 @@ object ParkingNotificationHelper {
 
         val text = if (!carName.isNullOrBlank()) {
             if (strings.languageSection == "Γλώσσα") {
-                "Συνδέθηκε με $carName • Αυτόματη αποθήκευση έτοιμη"
+                "Συνδέθηκε BT ($carName) • Αναμονή αποσύνδεσης BT"
             } else {
-                "Connected to $carName • Auto-save armed"
+                "BT connected ($carName) • Waiting for BT disconnect"
             }
         } else {
             if (strings.languageSection == "Γλώσσα") {
-                "Αυτόματη στάθμευση ενεργή • Έτοιμο για σύνδεση Bluetooth"
+                "Αναμονή για σύνδεση BT"
             } else {
-                "Auto-Park Active • Ready for vehicle Bluetooth"
+                "Waiting for BT connection"
             }
         }
 
         return NotificationCompat.Builder(context, CHANNEL_CAR_CONNECTION_WATCHER)
             .setSmallIcon(R.drawable.ic_notification_car)
-            .setContentTitle(strings.appName)
             .setContentText(text)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -215,8 +213,7 @@ object ParkingNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val deviceLabel = spot.bluetoothDeviceName?.takeIf { it.isNotBlank() } ?: strings.notificationCarBluetoothDefault
-        val title = if (!spot.bluetoothDeviceName.isNullOrBlank()) {
+        val savedHeader = if (!spot.bluetoothDeviceName.isNullOrBlank()) {
             "${spot.bluetoothDeviceName} • ${strings.notificationParkingLocationSaved}"
         } else {
             strings.notificationParkingLocationSaved
@@ -224,12 +221,12 @@ object ParkingNotificationHelper {
         val addressText = spot.address.ifBlank {
             LocationHelper.formatCoordinates(spot.latitude, spot.longitude)
         }
+        val combinedText = "$savedHeader • $addressText"
 
         val builder = NotificationCompat.Builder(context, CHANNEL_PARKING_ALERTS)
             .setSmallIcon(R.drawable.ic_notification_car)
-            .setContentTitle(title)
-            .setContentText(addressText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(addressText))
+            .setContentText(combinedText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(combinedText))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -279,16 +276,15 @@ object ParkingNotificationHelper {
         createNotificationChannels(context)
         val strings = context.getAppStrings()
 
-        val displayTitle = when {
-            title.isNullOrBlank() || title == "Pixel Parking" -> strings.appName
-            else -> title
+        val fullMessage = when {
+            title.isNullOrBlank() || title == "Pixel Parking" || title == strings.appName -> message
+            else -> "$title • $message"
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_PARKING_ALERTS)
             .setSmallIcon(R.drawable.ic_notification_car)
-            .setContentTitle(displayTitle)
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setContentText(fullMessage)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(fullMessage))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
 
@@ -328,12 +324,10 @@ object ParkingNotificationHelper {
         )
 
         val openAppBtnText = if (strings.languageSection == "Γλώσσα") "Άνοιγμα Εφαρμογής" else "Open App"
-        val title = if (strings.languageSection == "Γλώσσα") "Χρονόμετρο Στάθμευσης" else "Parking Timer"
-        val text = if (strings.languageSection == "Γλώσσα") "Υπολειπόμενος χρόνος: $formattedTime" else "Time remaining: $formattedTime"
+        val text = if (strings.languageSection == "Γλώσσα") "Χρονόμετρο στάθμευσης: $formattedTime" else "Parking timer remaining: $formattedTime"
 
         val builder = NotificationCompat.Builder(context, CHANNEL_TIMER_RUNNING)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle(title)
             .setContentText(text)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
@@ -391,13 +385,11 @@ object ParkingNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val title = if (strings.languageSection == "Γλώσσα") "Το χρονόμετρο διακόπηκε" else "Parking timer stopped"
         val message = if (strings.languageSection == "Γλώσσα") "Το χρονόμετρο στάθμευσης έχει τεθεί σε παύση." else "The parking timer has been stopped."
         val continueLabel = if (strings.languageSection == "Γλώσσα") "Συνέχιση Χρονομέτρου" else "Continue Timer"
 
         val builder = NotificationCompat.Builder(context, CHANNEL_PARKING_ALERTS)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle(title)
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
@@ -428,9 +420,9 @@ object ParkingNotificationHelper {
         createNotificationChannels(context)
         val strings = context.getAppStrings()
 
-        val displayTitle = when {
-            title.isNullOrBlank() || title == "Pixel Parking" -> strings.alarmExpiredTitle
-            else -> title
+        val fullMessage = when {
+            title.isNullOrBlank() || title == "Pixel Parking" || title == strings.appName -> "${strings.alarmExpiredTitle} • $message"
+            else -> "$title • $message"
         }
 
         // Tap content -> bring app to front
@@ -458,9 +450,8 @@ object ParkingNotificationHelper {
 
         val builder = NotificationCompat.Builder(context, CHANNEL_TIMER_ALARM)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle(displayTitle)
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setContentText(fullMessage)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(fullMessage))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // Shows on lockscreen

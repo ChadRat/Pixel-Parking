@@ -131,6 +131,9 @@ import com.example.ui.components.BabyBottleIcon
 import com.example.ui.components.CarBadgeStyle
 import com.example.ui.components.CapyVariant
 import com.example.ui.components.FullGearNavIcon
+import com.example.ui.components.FunSettingsIconShapeType
+import com.example.ui.components.getSettingsIconContainerShape
+import com.example.ui.components.getSettingsIconContainerShapeForIndex
 import com.example.sensor.DistanceUnit
 import com.example.ui.i18n.AppLanguage
 import com.example.ui.i18n.LocalAppStrings
@@ -164,6 +167,32 @@ fun SettingsScreen(
     val isCrownOnRight by viewModel.wearCrownOnRight.collectAsState()
     val isGeofenceAutoPark by viewModel.isGeofenceAutoParkEnabled.collectAsState()
     val isDevFunWalkAwayIcon by viewModel.isDevFunWalkAwayIcon.collectAsState()
+    val isDevFunSettingsIcons by viewModel.isDevFunSettingsIcons.collectAsState()
+
+    val systemInDarkForShapes = isSystemInDarkTheme()
+    val showSunScheduleRow = currentThemeMode == AppThemeMode.SYSTEM
+    val showOledRow = when (currentThemeMode) {
+        AppThemeMode.DARK -> true
+        AppThemeMode.SYSTEM -> if (autoSunTheme) !isDaytime else systemInDarkForShapes
+        AppThemeMode.LIGHT -> false
+    }
+    val showCapyVariantRow = currentCarBadgeStyle == CarBadgeStyle.CAPY
+
+    // Sequential visible indices so two settings one above the other NEVER share the same shape
+    val idxLanguage = 0
+    val idxAppearance = 1
+    val idxSunSchedule = 2
+    val idxDynamicColor = if (showSunScheduleRow) 3 else 2
+    val idxOled = idxDynamicColor + 1
+    val idxGeofence = if (showOledRow) idxOled + 1 else idxDynamicColor + 1
+    val idxCarStyle = idxGeofence + 1
+    val idxCapyVariant = idxCarStyle + 1
+    val idxBattery = if (showCapyVariantRow) idxCapyVariant + 1 else idxCarStyle + 1
+    val idxAlwaysOnBt = idxBattery + 1
+    val idxAlarmSound = idxAlwaysOnBt + 1
+    val idxEarlyReminders = idxAlarmSound + 1
+    val idxWearOs = if (isParkingTimerEnabled) idxEarlyReminders + 1 else idxAlwaysOnBt + 1
+    val idxAbout = idxWearOs + 1
 
     var isCrownOptionsExpanded by remember { mutableStateOf(false) }
     var isMilesExpanded by rememberSaveable { mutableStateOf(distanceUnit == DistanceUnit.IMPERIAL) }
@@ -293,7 +322,10 @@ fun SettingsScreen(
                             modifier = Modifier.weight(1f)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(18.dp),
+                                shape = getSettingsIconContainerShapeForIndex(
+                                    enabled = isDevFunSettingsIcons,
+                                    index = idxLanguage
+                                ),
                                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                                 modifier = Modifier.size(54.dp)
                             ) {
@@ -449,7 +481,10 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(18.dp),
+                            shape = getSettingsIconContainerShapeForIndex(
+                                enabled = isDevFunSettingsIcons,
+                                index = idxAppearance
+                            ),
                             color = MaterialTheme.colorScheme.surfaceContainerHighest,
                             modifier = Modifier.size(54.dp)
                         ) {
@@ -531,7 +566,10 @@ fun SettingsScreen(
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Surface(
-                                        shape = RoundedCornerShape(18.dp),
+                                        shape = getSettingsIconContainerShapeForIndex(
+                                            enabled = isDevFunSettingsIcons,
+                                            index = idxSunSchedule
+                                        ),
                                         color = MaterialTheme.colorScheme.surfaceContainerHighest,
                                         modifier = Modifier.size(54.dp)
                                     ) {
@@ -604,7 +642,10 @@ fun SettingsScreen(
                             modifier = Modifier.weight(1f)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(18.dp),
+                                shape = getSettingsIconContainerShapeForIndex(
+                                    enabled = isDevFunSettingsIcons,
+                                    index = idxDynamicColor
+                                ),
                                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                                 modifier = Modifier.size(54.dp)
                             ) {
@@ -686,7 +727,10 @@ fun SettingsScreen(
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Surface(
-                                        shape = RoundedCornerShape(18.dp),
+                                        shape = getSettingsIconContainerShapeForIndex(
+                                            enabled = isDevFunSettingsIcons,
+                                            index = idxOled
+                                        ),
                                         color = MaterialTheme.colorScheme.surfaceContainerHighest,
                                         modifier = Modifier.size(54.dp)
                                     ) {
@@ -772,7 +816,10 @@ fun SettingsScreen(
                             modifier = Modifier.weight(1f)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(18.dp),
+                                shape = getSettingsIconContainerShapeForIndex(
+                                    enabled = isDevFunSettingsIcons,
+                                    index = idxGeofence
+                                ),
                                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                                 modifier = Modifier.size(54.dp)
                             ) {
@@ -885,7 +932,10 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(18.dp),
+                            shape = getSettingsIconContainerShapeForIndex(
+                                enabled = isDevFunSettingsIcons,
+                                index = idxCarStyle
+                            ),
                             color = MaterialTheme.colorScheme.surfaceContainerHighest,
                             modifier = Modifier.size(54.dp)
                         ) {
@@ -969,7 +1019,10 @@ fun SettingsScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
                                 Surface(
-                                    shape = RoundedCornerShape(18.dp),
+                                    shape = getSettingsIconContainerShapeForIndex(
+                                        enabled = isDevFunSettingsIcons,
+                                        index = idxCapyVariant
+                                    ),
                                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                                     modifier = Modifier.size(54.dp)
                                 ) {
@@ -1091,7 +1144,10 @@ fun SettingsScreen(
                     ) {
                         // Left squircle icon container matching provided screenshot
                         Surface(
-                            shape = RoundedCornerShape(18.dp),
+                            shape = getSettingsIconContainerShapeForIndex(
+                                enabled = isDevFunSettingsIcons,
+                                index = idxBattery
+                            ),
                             color = MaterialTheme.colorScheme.surfaceContainerHighest,
                             modifier = Modifier.size(54.dp)
                         ) {
@@ -1176,7 +1232,10 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(18.dp),
+                            shape = getSettingsIconContainerShapeForIndex(
+                                enabled = isDevFunSettingsIcons,
+                                index = idxAlwaysOnBt
+                            ),
                             color = MaterialTheme.colorScheme.surfaceContainerHighest,
                             modifier = Modifier.size(54.dp)
                         ) {
@@ -1265,7 +1324,10 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(18.dp),
+                            shape = getSettingsIconContainerShapeForIndex(
+                                enabled = isDevFunSettingsIcons,
+                                index = idxAlarmSound
+                            ),
                             color = MaterialTheme.colorScheme.surfaceContainerHighest,
                             modifier = Modifier.size(54.dp)
                         ) {
@@ -1351,7 +1413,10 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(18.dp),
+                                shape = getSettingsIconContainerShapeForIndex(
+                                    enabled = isDevFunSettingsIcons,
+                                    index = idxEarlyReminders
+                                ),
                                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                                 modifier = Modifier.size(54.dp)
                             ) {
@@ -1463,7 +1528,10 @@ fun SettingsScreen(
                             modifier = Modifier.weight(1f)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(18.dp),
+                                shape = getSettingsIconContainerShapeForIndex(
+                                    enabled = isDevFunSettingsIcons,
+                                    index = idxWearOs
+                                ),
                                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                                 modifier = Modifier.size(54.dp)
                             ) {
@@ -1623,11 +1691,17 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(18.dp),
+                            shape = getSettingsIconContainerShapeForIndex(
+                                enabled = isDevFunSettingsIcons,
+                                index = idxAbout
+                            ),
                             color = MaterialTheme.colorScheme.surfaceContainerHighest,
                             modifier = Modifier.size(54.dp)
                         ) {
@@ -1657,6 +1731,8 @@ fun SettingsScreen(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }

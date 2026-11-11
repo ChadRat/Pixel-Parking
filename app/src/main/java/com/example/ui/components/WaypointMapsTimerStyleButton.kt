@@ -23,10 +23,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Waypoint Google Maps navigation button matching the Park Here button styling:
+ * Waypoint / Locations Map navigation button matching the Park Here button styling:
  * - Surface container (RoundedCornerShape(24.dp), height 48.dp)
- * - Rounded square shape slowly spinning clockwise, with map icon fixed/still inside
- * - Beside it a pill with the "Google Maps" text styled identically to the Park Here / Found Car / Timer pill
+ * - Rotating badge shape ([MapBadgeShape.ROUNDED_SQUARE] for Google Maps, [MapBadgeShape.ROUNDED_PENTAGON] for Locations Map)
+ *   with map icon fixed/still inside
+ * - Beside it a pill with the button text styled identically to the Park Here / Found Car / Timer pill
  */
 @Composable
 fun WaypointMapsTimerStyleButton(
@@ -34,6 +35,7 @@ fun WaypointMapsTimerStyleButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isFullWidth: Boolean = false,
+    badgeShape: MapBadgeShape = MapBadgeShape.ROUNDED_SQUARE,
     testTag: String = "waypoint_maps_button"
 ) {
     val finalModifier = if (isFullWidth) {
@@ -48,8 +50,8 @@ fun WaypointMapsTimerStyleButton(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f),
-        shadowElevation = 2.dp,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        shadowElevation = 4.dp,
         modifier = finalModifier.height(48.dp)
     ) {
         Row(
@@ -57,12 +59,12 @@ fun WaypointMapsTimerStyleButton(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Square with rounded corners spinning slowly clockwise with fixed map icon inside
             SpinningSquareMapIcon(
                 containerColor = MaterialTheme.colorScheme.primary,
                 iconColor = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier.size(34.dp),
-                animateSpin = true
+                animateSpin = true,
+                badgeShape = badgeShape
             )
 
             // Pill with text matching timer / found car / park here pill
@@ -77,9 +79,9 @@ fun WaypointMapsTimerStyleButton(
                     text = text,
                     fontFamily = HeavyRoundFont,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
+                    fontSize = if (text.length > 14) 12.5.sp else 14.sp,
                     color = MaterialTheme.colorScheme.onPrimary,
-                    letterSpacing = 0.5.sp,
+                    letterSpacing = if (text.length > 14) 0.2.sp else 0.5.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

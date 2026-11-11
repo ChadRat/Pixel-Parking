@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.AssistChip
@@ -93,11 +94,13 @@ fun DeveloperOptionsScreen(
     val isBtProximity by viewModel.isBtProximityEnabled.collectAsStateWithLifecycle()
     val isBtDisconnectTestEnabled by viewModel.isBtDisconnectTestEnabled.collectAsStateWithLifecycle()
     val isCapyCarsEnabled by viewModel.isDevCapyCarsEnabled.collectAsStateWithLifecycle()
+    val isCapyGameEnabled by viewModel.isDevCapyGameEnabled.collectAsStateWithLifecycle()
     val isGeofenceAfterBtEnabled by viewModel.isDevGeofenceAfterBtEnabled.collectAsStateWithLifecycle()
     val isCustomCoordsEnabled by viewModel.isCustomFarAwayCoordsEnabled.collectAsStateWithLifecycle()
     val customCoordsInput by viewModel.customFarAwayCoordsInput.collectAsStateWithLifecycle()
     val isSimpleScrollEnabled by viewModel.isDevSimpleScrollEnabled.collectAsStateWithLifecycle()
     val isDevFunWalkAwayIcon by viewModel.isDevFunWalkAwayIcon.collectAsStateWithLifecycle()
+    val isDevFunSettingsIcons by viewModel.isDevFunSettingsIcons.collectAsStateWithLifecycle()
     val whatsNewMessage by viewModel.whatsNewMessage.collectAsStateWithLifecycle()
     val devSimulatedProgress by viewModel.devSimulatedProgress.collectAsStateWithLifecycle()
     var showSquigglyLoadingPreview by remember { mutableStateOf(false) }
@@ -290,6 +293,17 @@ fun DeveloperOptionsScreen(
 
             item {
                 DeveloperOptionSimpleRow(
+                    title = "Capy car game",
+                    subtitle = "Enable 2D driving game Easter egg on tapping & holding Capybara car artwork",
+                    icon = Icons.Default.SportsEsports,
+                    checked = isCapyGameEnabled,
+                    onCheckedChange = { viewModel.setDevCapyGameEnabled(it) },
+                    testTag = "toggle_dev_capy_game"
+                )
+            }
+
+            item {
+                DeveloperOptionSimpleRow(
                     title = "Geofence with Bluetooth save",
                     subtitle = "Allow geofence feature to work even if location was automatically saved by Bluetooth",
                     icon = Icons.Default.LocationOn,
@@ -307,6 +321,17 @@ fun DeveloperOptionsScreen(
                     checked = isDevFunWalkAwayIcon,
                     onCheckedChange = { viewModel.setDevFunWalkAwayIcon(it) },
                     testTag = "toggle_dev_fun_walk_away_icon"
+                )
+            }
+
+            item {
+                DeveloperOptionSimpleRow(
+                    title = "Fun settings icons",
+                    subtitle = "Use expressive scalloped, star, clover, and polygon shapes for settings icons",
+                    icon = Icons.Default.AutoAwesome,
+                    checked = isDevFunSettingsIcons,
+                    onCheckedChange = { viewModel.setDevFunSettingsIcons(it) },
+                    testTag = "toggle_dev_fun_settings_icons"
                 )
             }
 

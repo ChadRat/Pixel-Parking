@@ -51,7 +51,6 @@ class GeofenceAutoParkWorker(
         ParkingNotificationHelper.createNotificationChannels(context)
         val notification: Notification = NotificationCompat.Builder(context, ParkingNotificationHelper.CHANNEL_PARKING_ALERTS)
             .setSmallIcon(R.drawable.ic_notification_car)
-            .setContentTitle("Saving parking location")
             .setContentText("Saving your parked car coordinates...")
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
@@ -75,16 +74,16 @@ class GeofenceAutoParkWorker(
         var carAcc = inputData.getFloat(KEY_CAR_ACC, 10f)
 
         if (carLat == 0.0 || carLng == 0.0) {
-            val candidateLat = prefs.getFloat(GeofenceManager.KEY_CAR_STOP_LAT, 0f).toDouble()
-            val candidateLng = prefs.getFloat(GeofenceManager.KEY_CAR_STOP_LNG, 0f).toDouble()
+            val candidateLat = GeofenceManager.getExactCoordinate(prefs, GeofenceManager.KEY_CAR_STOP_LAT, 0.0)
+            val candidateLng = GeofenceManager.getExactCoordinate(prefs, GeofenceManager.KEY_CAR_STOP_LNG, 0.0)
             if (candidateLat != 0.0 && candidateLng != 0.0) {
                 carLat = candidateLat
                 carLng = candidateLng
                 carAlt = prefs.getFloat(GeofenceManager.KEY_CAR_STOP_ALT, 0f).toDouble()
                 carAcc = prefs.getFloat(GeofenceManager.KEY_CAR_STOP_ACC, 10f)
             } else {
-                val centerLat = prefs.getFloat(GeofenceManager.KEY_GEOFENCE_CENTER_LAT, 0f).toDouble()
-                val centerLng = prefs.getFloat(GeofenceManager.KEY_GEOFENCE_CENTER_LNG, 0f).toDouble()
+                val centerLat = GeofenceManager.getExactCoordinate(prefs, GeofenceManager.KEY_GEOFENCE_CENTER_LAT, 0.0)
+                val centerLng = GeofenceManager.getExactCoordinate(prefs, GeofenceManager.KEY_GEOFENCE_CENTER_LNG, 0.0)
                 if (centerLat != 0.0 && centerLng != 0.0) {
                     carLat = centerLat
                     carLng = centerLng
@@ -139,12 +138,6 @@ class GeofenceAutoParkWorker(
             strings.geofenceExitNote
         }
 
-        val spotFloor = if (isUndergroundFallback) {
-            strings.undergroundFloorLevel
-        } else {
-            strings.floorGroundLevel
-        }
-
         // 2. CRITICAL: Save RAW COORDINATES immediately to Room Database!
         // This ensures the app saves coordinates right away even if network/underground geocoding hangs.
         val spot = ParkingSpot(
@@ -154,7 +147,7 @@ class GeofenceAutoParkWorker(
             accuracyMeters = carAcc,
             address = "", // Raw coordinates saved immediately
             spotName = strings.geofenceSavedSpotDefaultName,
-            floorLevel = spotFloor,
+            floorLevel = "",
             note = spotNote,
             timestamp = System.currentTimeMillis(),
             isAutoSaved = true,

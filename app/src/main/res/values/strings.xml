@@ -1,3 +1,6 @@
 <resources>
     <string name="app_name">Pixel Parking</string>
+    <string name="locations_map">Locations Map</string>
+    <string name="google_maps">Google Maps</string>
+    <string name="map">Map</string>
 </resources>

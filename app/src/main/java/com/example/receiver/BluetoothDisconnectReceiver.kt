@@ -51,20 +51,37 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
             }
         }
 
-        private val VEHICLE_KEYWORDS = listOf(
-            "car", "auto", "vehicle", "infotainment", "handsfree", "hands-free",
+        val VEHICLE_KEYWORDS = listOf(
+            "car", "auto", "vehicle", "infotainment",
             "head unit", "sync", "uconnect", "carplay",
             "android auto", "toyota", "vw", "volkswagen", "bmw", "audi", "mercedes",
             "ford", "hyundai", "kia", "nissan", "honda", "tesla", "chevy", "chevrolet",
             "mazda", "subaru", "jeep", "dodge", "ram", "lexus", "volvo", "renault",
-            "peugeot", "fiat", "skoda", "seat", "citroen", "opel", "mitsubishi",
-            "land rover", "porsche", "alfa", "suzuki", "genesis", "multimedia", "mmi", "idrive"
+            "peugeot", "fiat", "skoda", "seat", "citroen", "citroën", "opel", "mitsubishi",
+            "land rover", "range rover", "porsche", "alfa", "alfa romeo", "suzuki", "genesis",
+            "mmi", "idrive", "jaguar", "mini", "dacia", "cupra", "polestar",
+            "infiniti", "acura", "cadillac", "lincoln", "buick", "gmc", "chrysler",
+            "saab", "carkit", "car kit", "car audio", "car bt", "automotive", "entune",
+            "mconnect", "mbux", "r-link", "starlink"
+        )
+
+        private val VEHICLE_REGEX_PATTERNS = listOf(
+            Regex("""\b(car|cars|auto|automotive|carkit|car\s*kit|car\s*audio|car\s*bt|car\s*stereo|car\s*radio|car\s*media|head\s*unit|infotainment)\b""", RegexOption.IGNORE_CASE),
+            Regex("""\b(carplay|android\s*auto|uconnect|idrive|entune|mconnect|mbux|r-link|starlink)\b""", RegexOption.IGNORE_CASE),
+            Regex("""\b(audi\s*mmi|\bmmi\b|ford\s*sync|\bsync\b)\b""", RegexOption.IGNORE_CASE),
+            Regex("""\b(toyota|volkswagen|\bvw\b|\bbmw\b|mercedes|mercedes-benz|ford|hyundai|kia|nissan|honda|tesla)\b""", RegexOption.IGNORE_CASE),
+            Regex("""\b(chevy|chevrolet|mazda|subaru|jeep|dodge|\bram\b|lexus|volvo|renault|peugeot|fiat|skoda|citroen|citroën)\b""", RegexOption.IGNORE_CASE),
+            Regex("""\b(opel|mitsubishi|land\s*rover|range\s*rover|porsche|alfa\s*romeo|\balfa\b|suzuki|genesis|jaguar|\bmini\b|dacia|cupra|polestar)\b""", RegexOption.IGNORE_CASE),
+            Regex("""\b(infiniti|acura|cadillac|lincoln|buick|\bgmc\b|chrysler|saab|bentley|maserati|aston\s*martin|ferrari|lamborghini)\b""", RegexOption.IGNORE_CASE),
+            Regex("""\b(smart\s*fortwo|smart\s*eq|smart\s*car|\bseat\b)\b""", RegexOption.IGNORE_CASE),
+            Regex("""\b(pioneer\s*(avh|dmx|deh|sph)|kenwood\s*(dmx|ddx|kdc)|alpine\s*(ilx|ine|cde)|sony\s*(xav|mex))\b""", RegexOption.IGNORE_CASE)
         )
 
         fun hasVehicleKeywords(name: String?): Boolean {
             if (name.isNullOrBlank()) return false
-            val lower = name.lowercase()
-            return VEHICLE_KEYWORDS.any { lower.contains(it) }
+            if (BluetoothDeviceHelper.hasNonCarKeywords(name)) return false
+            val trimmed = name.trim()
+            return VEHICLE_REGEX_PATTERNS.any { it.containsMatchIn(trimmed) }
         }
 
         fun isProfileConnectionEvent(action: String?, profileState: Int = -1, adapterState: Int = -1): Boolean {
@@ -106,6 +123,9 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
         // 1. Handle system boot / update actions to warm up Application & services
         if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             Log.d(TAG, "Device booted / package replaced; app initialized.")
+            if (action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+                com.example.util.WhatsNewManager.onPackageReplaced(context)
+            }
             com.example.geofence.GeofenceManager.restoreOnStartup(context)
             return
         }
@@ -186,12 +206,13 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                         }
                         if (isBonded) {
                             val effectiveName = connName ?: "Bluetooth Device"
-                            val isCar = hasVehicleKeywords(effectiveName) || repository.getMonitoredDevicesDirect().isEmpty()
+                            val isCar = BluetoothDeviceHelper.isCarDevice(name = effectiveName, bluetoothDevice = device)
                             repository.registerBluetoothDevice(
                                 BluetoothCarDevice(
                                     address = connAddress,
                                     name = effectiveName,
                                     originalName = effectiveName,
+                                    deviceType = if (isCar) "Car Audio / Infotainment" else "Bluetooth Device",
                                     isMonitoredCar = isCar,
                                     lastConnectedTimestamp = System.currentTimeMillis()
                                 ),
@@ -228,16 +249,15 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                     }
 
                     val isCarOrMonitored = matched?.isMonitoredCar == true ||
-                            (connName != null && hasVehicleKeywords(connName)) ||
-                            repository.getMonitoredDevicesDirect().any { it.address.equals(connAddress, ignoreCase = true) } ||
-                            repository.getMonitoredDevicesDirect().isEmpty()
+                            (connName != null && BluetoothDeviceHelper.isCarDevice(name = connName, bluetoothDevice = device)) ||
+                            repository.getMonitoredDevicesDirect().any { it.address.equals(connAddress, ignoreCase = true) }
 
                     if (isCarOrMonitored) {
                         val activeCarName = matched?.name ?: connName ?: "Car Bluetooth"
                         com.example.service.AutoParkLocationService.startWatching(context, activeCarName, connAddress)
                     }
 
-                    if (matched?.isMonitoredCar == true) {
+                    if (matched?.isMonitoredCar == true && com.example.geofence.GeofenceManager.isWalkAwayEnabled(context)) {
                         com.example.geofence.GeofenceManager.clearGpsBuffer(context)
                     }
                 } catch (e: Throwable) {
@@ -283,10 +303,14 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                 if (allMonitored.isEmpty() && !isSimulatedDisconnect) {
                     val allDevices = repository.getAllDevicesDirect()
                     val candidateCar = allDevices.firstOrNull { dev ->
-                        dev.deviceType == "Car" || hasVehicleKeywords(dev.name) || hasVehicleKeywords(dev.originalName)
+                        dev.isMonitoredCar ||
+                            BluetoothDeviceHelper.isCarDevice(dev.name, dev.deviceType) ||
+                            (dev.originalName.isNotBlank() && BluetoothDeviceHelper.isCarDevice(dev.originalName, dev.deviceType))
                     } ?: if (!rawAddress.isNullOrBlank() || !rawName.isNullOrBlank()) {
                         repository.findMatchingDevice(rawAddress, rawName)?.takeIf {
-                            it.deviceType == "Car" || hasVehicleKeywords(it.name) || hasVehicleKeywords(it.originalName)
+                            it.isMonitoredCar ||
+                                BluetoothDeviceHelper.isCarDevice(it.name, it.deviceType) ||
+                                (it.originalName.isNotBlank() && BluetoothDeviceHelper.isCarDevice(it.originalName, it.deviceType))
                         }
                     } else null
 
@@ -294,12 +318,12 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                         Log.d(TAG, "Auto-monitoring '${candidateCar.name}' for disconnect auto-park.")
                         repository.setDeviceMonitored(candidateCar.address, true)
                         allMonitored = listOf(candidateCar.copy(isMonitoredCar = true))
-                    } else if (hasVehicleKeywords(rawName)) {
+                    } else if (BluetoothDeviceHelper.isCarDevice(rawName)) {
                         val newCar = BluetoothCarDevice(
                             address = rawAddress ?: "00:00:00:00:00:00",
                             name = rawName ?: "Car Bluetooth",
                             originalName = rawName ?: "Car Bluetooth",
-                            deviceType = "Car",
+                            deviceType = "Car Audio / Infotainment",
                             isMonitoredCar = true,
                             lastConnectedTimestamp = System.currentTimeMillis()
                         )
@@ -481,7 +505,7 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                     // 2) There is a reliable entrance fix from the CURRENT drive
                     // 3) The entrance fix is physically near the current location (< 350m)!
                     val isDegraded = accuracy > 80.0f
-                    val reliableEntranceFix = if (isDegraded) {
+                    val reliableEntranceFix = if (isDegraded && com.example.geofence.GeofenceManager.isWalkAwayEnabled(context)) {
                         val fix = com.example.geofence.GeofenceManager.getLastReliableFix(context)
                         if (fix != null && (referenceSpot == null || fix.timestamp > referenceSpot.timestamp)) {
                             val dist = FloatArray(1)
@@ -512,7 +536,6 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                     } else {
                         strings.bluetoothDisconnectNote
                     }
-                    val spotFloor = if (isUndergroundFallback) strings.undergroundFloorLevel else strings.floorGroundLevel
 
                     val spot = ParkingSpot(
                         latitude = lat,
@@ -521,7 +544,7 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                         accuracyMeters = accuracy,
                         address = resolvedAddress,
                         spotName = String.format(strings.autoSavedSpotDefaultName, effectiveDeviceName),
-                        floorLevel = spotFloor,
+                        floorLevel = "",
                         note = spotNote,
                         timestamp = System.currentTimeMillis(),
                         isAutoSaved = true,
@@ -540,11 +563,13 @@ class BluetoothDisconnectReceiver : BroadcastReceiver() {
                     val newId = repository.saveNewParkingSpot(spot)
                     val savedSpot = spot.copy(id = newId)
 
-                    // Clear the rolling GPS buffer now that car is parked so old entrance fixes do not pollute next trip
-                    com.example.geofence.GeofenceManager.clearGpsBuffer(context)
+                    if (com.example.geofence.GeofenceManager.isWalkAwayEnabled(context)) {
+                        // Clear the rolling GPS buffer now that car is parked so old entrance fixes do not pollute next trip
+                        com.example.geofence.GeofenceManager.clearGpsBuffer(context)
 
-                    // Arm geofence tracking around the Bluetooth-saved parking location
-                    com.example.geofence.GeofenceManager.armGeofenceAfterBluetoothSave(context, lat, lng)
+                        // Arm geofence tracking around the Bluetooth-saved parking location
+                        com.example.geofence.GeofenceManager.armGeofenceAfterBluetoothSave(context, lat, lng)
+                    }
 
                     // If underground safeguard was triggered, inform the user
                     if (isUndergroundFallback) {

@@ -23,6 +23,11 @@ class ParkingRepository(
     val selectedCarDevice: Flow<BluetoothCarDevice?> = bluetoothCarDeviceDao.getSelectedMonitoredDeviceFlow()
 
     suspend fun saveNewParkingSpot(spot: ParkingSpot, allowGeofenceAfterBt: Boolean = false): Long {
+        val sanitizedSpot = if (spot.isBluetoothEntry || spot.isGeofenceEntry) {
+            spot.copy(floorLevel = "")
+        } else {
+            spot
+        }
         val mostRecent = parkingSpotDao.getMostRecentSpotDirect()
         val now = System.currentTimeMillis()
         if (mostRecent != null) {
@@ -30,34 +35,35 @@ class ParkingRepository(
             val distMeters = try {
                 com.example.sensor.LocationHelper.calculateDistanceMeters(
                     mostRecent.latitude, mostRecent.longitude,
-                    spot.latitude, spot.longitude
+                    sanitizedSpot.latitude, sanitizedSpot.longitude
                 )
             } catch (_: Throwable) {
                 999f
             }
 
-            val isNearby = distMeters < 80f || (mostRecent.latitude == spot.latitude && mostRecent.longitude == spot.longitude)
-            val isSameCoords = distMeters < 30f || (mostRecent.latitude == spot.latitude && mostRecent.longitude == spot.longitude)
-            val isSameBtDevice = !spot.bluetoothDeviceAddress.isNullOrBlank() &&
-                    spot.bluetoothDeviceAddress.equals(mostRecent.bluetoothDeviceAddress, ignoreCase = true)
-            val isBothGeofence = spot.isGeofenceEntry && mostRecent.isGeofenceEntry
+            val isNearby = distMeters < 80f || (mostRecent.latitude == sanitizedSpot.latitude && mostRecent.longitude == sanitizedSpot.longitude)
+            val isSameCoords = distMeters < 30f || (mostRecent.latitude == sanitizedSpot.latitude && mostRecent.longitude == sanitizedSpot.longitude)
+            val isSameBtDevice = !sanitizedSpot.bluetoothDeviceAddress.isNullOrBlank() &&
+                    sanitizedSpot.bluetoothDeviceAddress.equals(mostRecent.bluetoothDeviceAddress, ignoreCase = true)
+            val isBothGeofence = sanitizedSpot.isGeofenceEntry && mostRecent.isGeofenceEntry
 
             // Case A: High-priority Bluetooth disconnect arrives and a Geofence spot was recently saved nearby (< 80m, < 5 mins)
             // Bluetooth disconnect provides hardware-level vehicle certainty -> supersedes/upgrades recent geofence spot
-            if (spot.isBluetoothEntry && mostRecent.isGeofenceEntry && isNearby && timeDiffMs < 5 * 60 * 1000L) {
+            if (sanitizedSpot.isBluetoothEntry && mostRecent.isGeofenceEntry && isNearby && timeDiffMs < 5 * 60 * 1000L) {
                 try {
                     Log.d("ParkingRepository", "High-priority Bluetooth disconnect event supersedes recent geofence spot (${mostRecent.id})")
                 } catch (_: Throwable) {}
                 val upgradedSpot = mostRecent.copy(
-                    latitude = spot.latitude,
-                    longitude = spot.longitude,
-                    altitude = if (spot.altitude != 0.0) spot.altitude else mostRecent.altitude,
-                    accuracyMeters = if (spot.accuracyMeters > 0) spot.accuracyMeters else mostRecent.accuracyMeters,
-                    address = if (spot.address.isNotBlank() && !spot.address.startsWith("Lat")) spot.address else mostRecent.address,
-                    spotName = spot.spotName,
-                    bluetoothDeviceName = spot.bluetoothDeviceName,
-                    bluetoothDeviceAddress = spot.bluetoothDeviceAddress,
-                    note = spot.note.ifBlank { mostRecent.note },
+                    latitude = sanitizedSpot.latitude,
+                    longitude = sanitizedSpot.longitude,
+                    altitude = if (sanitizedSpot.altitude != 0.0) sanitizedSpot.altitude else mostRecent.altitude,
+                    accuracyMeters = if (sanitizedSpot.accuracyMeters > 0) sanitizedSpot.accuracyMeters else mostRecent.accuracyMeters,
+                    address = if (sanitizedSpot.address.isNotBlank() && !sanitizedSpot.address.startsWith("Lat")) sanitizedSpot.address else mostRecent.address,
+                    spotName = sanitizedSpot.spotName,
+                    floorLevel = "",
+                    bluetoothDeviceName = sanitizedSpot.bluetoothDeviceName,
+                    bluetoothDeviceAddress = sanitizedSpot.bluetoothDeviceAddress,
+                    note = sanitizedSpot.note.ifBlank { mostRecent.note },
                     isAutoSaved = true,
                     isActive = true
                 )
@@ -67,15 +73,15 @@ class ParkingRepository(
 
             // Case B: Late-arriving Geofence exit save arrives after a Bluetooth disconnect event already saved the spot (< 80m, < 10 mins)
             // Bluetooth spot takes precedence -> Geofence event smoothly merges into existing spot without creating a twin record
-            if (spot.isGeofenceEntry && mostRecent.isBluetoothEntry && isNearby && timeDiffMs < 10 * 60 * 1000L) {
+            if (sanitizedSpot.isGeofenceEntry && mostRecent.isBluetoothEntry && isNearby && timeDiffMs < 10 * 60 * 1000L) {
                 if (!allowGeofenceAfterBt) {
                     try {
                         Log.d("ParkingRepository", "Late-arriving geofence exit event smoothly merges into existing Bluetooth disconnect spot (${mostRecent.id})")
                     } catch (_: Throwable) {}
-                    if (spot.address.isNotBlank() && !spot.address.startsWith("Lat") && spot.address != "Unknown Address" &&
+                    if (sanitizedSpot.address.isNotBlank() && !sanitizedSpot.address.startsWith("Lat") && sanitizedSpot.address != "Unknown Address" &&
                         (mostRecent.address.isBlank() || mostRecent.address.startsWith("Lat") || mostRecent.address == "Unknown Address")
                     ) {
-                        parkingSpotDao.updateSpot(mostRecent.copy(address = spot.address, isActive = true))
+                        parkingSpotDao.updateSpot(mostRecent.copy(address = sanitizedSpot.address, floorLevel = "", isActive = true))
                     }
                     return mostRecent.id
                 } else {
@@ -96,10 +102,11 @@ class ParkingRepository(
                 try {
                     Log.w("ParkingRepository", "Deduplicated parking spot save! Returning existing ID: ${mostRecent.id}")
                 } catch (_: Throwable) {}
-                if (spot.address.isNotBlank() && !spot.address.startsWith("Lat") && spot.address != "Unknown Address" &&
+                if (sanitizedSpot.address.isNotBlank() && !sanitizedSpot.address.startsWith("Lat") && sanitizedSpot.address != "Unknown Address" &&
                     (mostRecent.address.isBlank() || mostRecent.address.startsWith("Lat") || mostRecent.address == "Unknown Address")
                 ) {
-                    parkingSpotDao.updateSpot(mostRecent.copy(address = spot.address, isActive = true))
+                    val updatedFloor = if (mostRecent.isBluetoothEntry || mostRecent.isGeofenceEntry) "" else mostRecent.floorLevel
+                    parkingSpotDao.updateSpot(mostRecent.copy(address = sanitizedSpot.address, floorLevel = updatedFloor, isActive = true))
                 }
                 return mostRecent.id
             }
@@ -107,7 +114,7 @@ class ParkingRepository(
 
         // Deactivate previous active spot first
         parkingSpotDao.deactivateAllSpots()
-        return parkingSpotDao.insertSpot(spot.copy(isActive = true))
+        return parkingSpotDao.insertSpot(sanitizedSpot.copy(isActive = true))
     }
 
     suspend fun getSpotById(id: Long): ParkingSpot? {

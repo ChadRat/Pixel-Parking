@@ -24,6 +24,8 @@ data class AppStrings(
     val foundCar: String,
     val waypointRadar: String,
     val googleMaps: String,
+    val locationsMap: String = "Locations Map",
+    val mapButton: String = "Google Maps",
     val editDetails: String,
     val shareSpot: String,
     val noActiveSpotSubtitle: String,
@@ -186,6 +188,13 @@ data class AppStrings(
     val devCapyCarsSubtitle: String = "Enable capibara Cars as a third car style option",
     val whatsNewTitle: String = "What's new",
     val whatsNewGotIt: String = "Got it",
+    val checkWhatsNew: String = "Check Whats New",
+    val checkWhatsNewSubtitle: String = "See recent features and improvements in this release",
+    val whatsNewMessage: String =
+        "• Added a map in the history tab to display all the locations in a fun and functional way\n" +
+        "• Improved the functionality of the walk away feature.\n" +
+        "• Improved haptics and animations\n" +
+        "• Various Bug fixes",
 
     // Sub-groups to avoid hitting the 254 parameter limit
     val timerStrings: TimerStrings = TimerStrings(),
@@ -225,6 +234,7 @@ data class AppStrings(
     val updateDetailsButton: String get() = dialogStrings.updateDetailsButton
     val saveSpotButton: String get() = dialogStrings.saveSpotButton
 
+    val floorNone: String get() = floorStrings.floorNone
     val floorGroundLevel: String get() = floorStrings.floorGroundLevel
     val floorLevel1: String get() = floorStrings.floorLevel1
     val floorLevel2: String get() = floorStrings.floorLevel2
@@ -336,6 +346,18 @@ data class AppStrings(
     val gpsWeakSignalMessage: String get() = if (languageSection == "Γλώσσα") "Το σήμα GPS είναι ασθενές με εκτιμώμενη απόκλιση ±%d μ. Η αποθήκευση τώρα ενδέχεται να μην είναι ακριβής. Επιθυμείτε να δοκιμάσετε ξανά ή να αποθηκεύσετε όπως είναι;" else "GPS signal is currently weak with an estimated accuracy of ±%d m. Saving now might not pinpoint your vehicle accurately. Would you like to wait for a stronger signal or save anyway?"
     val gpsSignalTryAgain: String get() = if (languageSection == "Γλώσσα") "Δοκιμή Ξανά" else "Try Again"
     val gpsSignalSaveAnyway: String get() = if (languageSection == "Γλώσσα") "Αποθήκευση όπως είναι" else "Save Anyway"
+
+    // Always-On Display (AOD) Battery Indicator Strings
+    val aodSectionTitle: String get() = if (languageSection == "Γλώσσα") "Οθόνη Πάντα Ενεργή (AOD)" else "Always-On Display (AOD)"
+    val aodSectionSubtitle: String get() = if (languageSection == "Γλώσσα") "Εμφάνιση μπαταρίας στο κάτω μέρος της οθόνης AOD" else "Configure battery indicator at the bottom of the AOD screen"
+    val aodBatteryPercentageTitle: String get() = if (languageSection == "Γλώσσα") "Ποσοστό Μπαταρίας στο AOD" else "AOD Battery Percentage"
+    val aodBatteryPercentageSubtitle: String get() = if (languageSection == "Γλώσσα") "Εμφάνιση του ποσοστού μπαταρίας της συσκευής στο κάτω μέρος της οθόνης AOD" else "Show the device battery percentage at the bottom of the AOD screen"
+    val aodBatteryDotsTitle: String get() = if (languageSection == "Γλώσσα") "Τελείες Μπαταρίας σε Σειρά (3 ή 4)" else "AOD Battery Dots (3 or 4 in a Row)"
+    val aodBatteryDotsSubtitle: String get() = if (languageSection == "Γλώσσα") "Διαιρεί το 100% σε 3 ή 4 μέρη (π.χ. στο 20% εμφανίζεται μόνο 1 τελεία)" else "Divides 100% into 3 or 4 parts in a row (e.g. at 20% only one dot shows up)"
+    val aodDots3Option: String get() = if (languageSection == "Γλώσσα") "3 Τελείες" else "3 Dots"
+    val aodDots4Option: String get() = if (languageSection == "Γλώσσα") "4 Τελείες" else "4 Dots"
+    val aodOpenScreenButton: String get() = if (languageSection == "Γλώσσα") "Άνοιγμα Οθόνης AOD" else "Open AOD Screen"
+    val aodTapToWakeHint: String get() = if (languageSection == "Γλώσσα") "Πατήστε για έξοδο από το AOD" else "Tap anywhere to exit AOD"
 }
 
 data class TimerStrings(
@@ -372,6 +394,7 @@ data class DialogStrings(
 )
 
 data class FloorStrings(
+    val floorNone: String = "None",
     val floorGroundLevel: String = "Ground Level",
     val floorLevel1: String = "Level 1",
     val floorLevel2: String = "Level 2",
@@ -465,6 +488,8 @@ val EnglishStrings = AppStrings(
     foundCar = "Found Car",
     waypointRadar = "Waypoint Radar",
     googleMaps = "Google Maps",
+    locationsMap = "Locations Map",
+    mapButton = "Google Maps",
     editDetails = "Edit Details",
     shareSpot = "Share Spot",
     noActiveSpotSubtitle = "Your parking spot will save automatically when your car's Bluetooth disconnects, or tap below to record your parking spot manually.",
@@ -529,7 +554,7 @@ val EnglishStrings = AppStrings(
     pairNew = "Pair New",
     add = "Add",
     noPairedDevices = "No Paired Devices Found",
-    noPairedSubtitle = "Pair your phone to your car's Bluetooth in Android Settings, or add a vehicle preset below.",
+    noPairedSubtitle = "Pair your phone to your car's Bluetooth in Android Settings, or add a vehicle preset below. Otherwise your Bluetooth may be off.",
     autoParkEnabled = "Auto-Park Enabled",
     tapToMonitor = "Tap switch to monitor this vehicle",
     renameVehicle = "Rename Vehicle",
@@ -649,6 +674,8 @@ val GreekStrings = AppStrings(
     foundCar = "Βρέθηκε το Όχημα",
     waypointRadar = "Ραντάρ Πλοήγησης",
     googleMaps = "Χάρτες Google",
+    locationsMap = "Χάρτης Τοποθεσιών",
+    mapButton = "Χάρτες Google",
     editDetails = "Επεξεργασία",
     shareSpot = "Κοινοποίηση",
     noActiveSpotSubtitle = "Η τοποθεσία στάθμευσης θα αποθηκευτεί αυτόματα μόλις αποσυνδεθεί το Bluetooth του αυτοκινήτου σας, ή πατήστε παρακάτω για να την καταγράψετε χειροκίνητα.",
@@ -713,7 +740,7 @@ val GreekStrings = AppStrings(
     pairNew = "Νέα Σύζευξη",
     add = "Προσθήκη",
     noPairedDevices = "Δεν βρέθηκαν συζευγμένες συσκευές",
-    noPairedSubtitle = "Συνδέστε το τηλέφωνό σας με το Bluetooth του αυτοκινήτου στις Ρυθμίσεις Android ή προσθέστε ένα όχημα παρακάτω.",
+    noPairedSubtitle = "Συνδέστε το τηλέφωνό σας με το Bluetooth του αυτοκινήτου στις Ρυθμίσεις Android ή προσθέστε ένα όχημα παρακάτω. Διαφορετικά, το Bluetooth σας μπορεί να είναι απενεργοποιημένο.",
     autoParkEnabled = "Αυτόματη Στάθμευση Ενεργή",
     tapToMonitor = "Πατήστε για παρακολούθηση αυτού του οχήματος",
     renameVehicle = "Μετονομασία Οχήματος",
@@ -805,6 +832,15 @@ val GreekStrings = AppStrings(
     capyVariantAdult = "Ενήλικο Capy",
     devCapyCarsTitle = "Capy cars",
     devCapyCarsSubtitle = "Ενεργοποίηση αυτοκινήτων Capybara ως 3η επιλογή στιλ",
+    whatsNewTitle = "Τι νέο υπάρχει",
+    whatsNewGotIt = "Εντάξει",
+    checkWhatsNew = "Δείτε τι νέο υπάρχει",
+    checkWhatsNewSubtitle = "Δείτε τα νέα χαρακτηριστικά και τις βελτιώσεις της έκδοσης",
+    whatsNewMessage =
+        "• Προστέθηκε χάρτης στην καρτέλα ιστορικού για να εμφανίζονται όλες οι τοποθεσίες με διασκεδαστικό και λειτουργικό τρόπο\n" +
+        "• Βελτιώθηκε η λειτουργικότητα της δυνατότητας Walk Away.\n" +
+        "• Βελτιωμένη απτική ανάδραση και κινούμενα σχέδια\n" +
+        "• Διάφορες διορθώσεις σφαλμάτων",
 
     timerStrings = TimerStrings(
         parkingTimerTitle = "Χρονόμετρο Στάθμευσης",
@@ -838,6 +874,7 @@ val GreekStrings = AppStrings(
         saveSpotButton = "Αποθήκευση Θέσης"
     ),
     floorStrings = FloorStrings(
+        floorNone = "Κανένας",
         floorGroundLevel = "Ισόγειο",
         floorLevel1 = "1ος Όροφος",
         floorLevel2 = "2ος Όροφος",
@@ -919,7 +956,8 @@ fun Context.getAppStrings(): AppStrings = getAppStrings(getSavedAppLanguage())
 
 fun localizeFloor(floor: String, strings: AppStrings): String {
     return when (floor) {
-        "Ground Level", "Ισόγειο", "" -> strings.floorGroundLevel
+        "None", "none", "Κανένας", "Χωρίς όροφο", "" -> strings.floorNone
+        "Ground Level", "Ισόγειο" -> strings.floorGroundLevel
         "Level 1", "1ος Όροφος", "Επίπεδο 1" -> strings.floorLevel1
         "Level 2", "2ος Όροφος", "Επίπεδο 2" -> strings.floorLevel2
         "Level 3", "3ος Όροφος", "Επίπεδο 3" -> strings.floorLevel3
@@ -929,6 +967,16 @@ fun localizeFloor(floor: String, strings: AppStrings): String {
         "Roof Deck", "Ταράτσα" -> strings.floorRoofDeck
         else -> floor
     }
+}
+
+fun isFloorConfigured(floor: String?): Boolean {
+    val f = floor?.trim().orEmpty()
+    return f.isNotBlank() &&
+        !f.equals("None", ignoreCase = true) &&
+        !f.equals("none", ignoreCase = true) &&
+        !f.equals("null", ignoreCase = true) &&
+        !f.equals("Κανένας", ignoreCase = true) &&
+        !f.equals("Χωρίς όροφο", ignoreCase = true)
 }
 
 fun localizeSpotName(name: String, strings: AppStrings): String {

@@ -80,6 +80,7 @@ object UpdateManager {
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
                     val json = JSONObject(response)
                     val tagName = json.optString("tag_name", "")
+                    val releaseName = json.optString("name", "")
                     val releaseNotes = json.optString("body", "")
                     val assets = json.optJSONArray("assets")
 
@@ -248,7 +249,6 @@ object UpdateManager {
         val versionSuffix = if (versionName.isNotEmpty()) " (v$versionName)" else ""
         val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher_round)
-            .setContentTitle(strings.appName)
             .setContentText("${strings.updateAvailable}$versionSuffix")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
@@ -266,9 +266,6 @@ object UpdateManager {
         val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         ensureNotificationChannel(appContext)
 
-        // Trigger dynamic What's New window if developer updated message
-        WhatsNewManager.onUpdateDownloadStarted(appContext)
-
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(appContext, "Downloading update in background...", Toast.LENGTH_SHORT).show()
         }
@@ -277,7 +274,6 @@ object UpdateManager {
             // Initial progress notification
             val progressBuilder = NotificationCompat.Builder(appContext, NOTIFICATION_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
-                .setContentTitle(strings.appName)
                 .setContentText("Downloading update...")
                 .setProgress(100, 0, true)
                 .setOngoing(true)
@@ -450,7 +446,6 @@ object UpdateManager {
 
         val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("Pixel Parking Update")
             .setContentText("Download complete! Tap to install.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)

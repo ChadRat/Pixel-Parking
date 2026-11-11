@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pixel Parking</string>
+    <string name="locations_map">Χάρτης Τοποθεσιών</string>
+    <string name="google_maps">Χάρτες Google</string>
+    <string name="map">Χάρτης</string>
+</resources>

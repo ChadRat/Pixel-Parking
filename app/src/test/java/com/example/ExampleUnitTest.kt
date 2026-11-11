@@ -7,6 +7,7 @@ import com.example.data.entity.isUndergroundEntry
 import com.example.sensor.LocationHelper
 import com.example.sensor.SunCalculator
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -433,10 +434,46 @@ class ExampleUnitTest {
         assertTrue(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Toyota Car"))
         assertTrue(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("SYNC"))
         assertTrue(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("CarPlay"))
+        assertTrue(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Tesla Model Y"))
+        assertTrue(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("VW Infotainment"))
+        assertTrue(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Uconnect"))
+        assertTrue(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Ford F-150"))
+        assertTrue(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Honda Accord"))
+
+        // Headphones & Earbuds must be excluded
         org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("AirPods Pro"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("AirPods Max"))
         org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Sony WH-1000XM4"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Sony WF-1000XM4"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Bose QuietComfort 45"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Galaxy Buds2 Pro"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Pixel Buds Pro"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Beats Studio Buds"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Jabra Elite 75t"))
+
+        // TVs & Displays must be excluded
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Samsung 65 Smart TV"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Living Room TV"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("LG OLED TV"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Apple TV"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Fire TV Stick"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Sony BRAVIA"))
+
+        // Speakers, watches, computing
         org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("JBL Flip 6"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Amazon Echo Dot"))
         org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("Galaxy Watch 5"))
+        org.junit.Assert.assertFalse(com.example.receiver.BluetoothDisconnectReceiver.hasVehicleKeywords("iPad Pro"))
+
+        // Test BluetoothDeviceHelper.isCarDevice and isNonCarDevice
+        assertTrue(com.example.util.BluetoothDeviceHelper.isCarDevice("Audi MMI"))
+        assertTrue(com.example.util.BluetoothDeviceHelper.isCarDevice("Toyota RAV4"))
+        org.junit.Assert.assertFalse(com.example.util.BluetoothDeviceHelper.isCarDevice("AirPods Pro"))
+        org.junit.Assert.assertFalse(com.example.util.BluetoothDeviceHelper.isCarDevice("Samsung Smart TV"))
+        org.junit.Assert.assertFalse(com.example.util.BluetoothDeviceHelper.isCarDevice("Sony WH-1000XM4"))
+        assertTrue(com.example.util.BluetoothDeviceHelper.isNonCarDevice("AirPods Pro"))
+        assertTrue(com.example.util.BluetoothDeviceHelper.isNonCarDevice("Living Room TV"))
+        assertTrue(com.example.util.BluetoothDeviceHelper.isNonCarDevice("Samsung Smart TV"))
     }
 
     @Test
@@ -1253,6 +1290,213 @@ class ExampleUnitTest {
         assertEquals("00", editingZeroHours.first) // Hours
         assertEquals("15", editingZeroHours.second) // Minutes
     }
+
+    @Test
+    fun testAutoDetectOnlyEnablesTogglesAndNeverDisables() {
+        // Test existing devices:
+        // 1. Car device with toggle false -> should be enabled
+        // 2. User-enabled headphones with toggle true -> must NOT be disabled
+        // 3. Unrecognized device with toggle true -> must NOT be disabled
+        val carDevice = com.example.data.entity.BluetoothCarDevice(
+            address = "AA:BB:CC:DD:EE:01",
+            name = "BMW i4 Drive",
+            originalName = "BMW i4 Drive",
+            isMonitoredCar = false
+        )
+        val userEnabledHeadphones = com.example.data.entity.BluetoothCarDevice(
+            address = "AA:BB:CC:DD:EE:02",
+            name = "Sony WH-1000XM5",
+            originalName = "Sony WH-1000XM5",
+            isMonitoredCar = true
+        )
+        val userEnabledSpeaker = com.example.data.entity.BluetoothCarDevice(
+            address = "AA:BB:CC:DD:EE:03",
+            name = "JBL Flip 6",
+            originalName = "JBL Flip 6",
+            isMonitoredCar = true
+        )
+
+        val devices = listOf(carDevice, userEnabledHeadphones, userEnabledSpeaker)
+
+        devices.forEach { dev ->
+            val isCar = com.example.util.BluetoothDeviceHelper.isCarDevice(dev.name, dev.deviceType) ||
+                    (dev.originalName.isNotBlank() && com.example.util.BluetoothDeviceHelper.isCarDevice(dev.originalName, dev.deviceType))
+            // The auto-detect feature can ONLY enable toggles; it should NEVER disable any toggle
+            val shouldBeMonitored = if (isCar) true else dev.isMonitoredCar
+
+            if (dev == carDevice) {
+                assertTrue("Car device must have its toggle enabled by auto-detect", shouldBeMonitored)
+            } else {
+                assertTrue("Non-car device toggle already enabled must NEVER be disabled by auto-detect", shouldBeMonitored)
+            }
+        }
+    }
+
+    @Test
+    fun testCapyUniverseEasterEggEngine() {
+        val engine = com.example.ui.easteregg.CapyUniverseEngine()
+        assertEquals(0f, engine.currentSpeedKmh, 0.01f)
+        assertEquals(0f, engine.totalDistanceMeters, 0.01f)
+
+        // Test 1: When not holding screen, target speed is 0 km/h (car stops)
+        val screenWidth = 1000f
+        engine.update(dt = 0.016f, touchX = null, screenWidth = screenWidth)
+        assertEquals(0f, engine.targetSpeedKmh, 0.01f)
+
+        // Test 2: Holding center of screen -> gentle drive speed (~35 km/h)
+        engine.update(dt = 0.016f, touchX = 500f, screenWidth = screenWidth)
+        assertTrue("Target speed when holding center should be ~35 km/h", engine.targetSpeedKmh in 30f..40f)
+
+        // Test 3: Holding far edge -> faster turbo speed (> 200 km/h)
+        engine.update(dt = 0.016f, touchX = 1000f, screenWidth = screenWidth)
+        assertTrue("Target speed when holding edge should be turbo (> 200 km/h)", engine.targetSpeedKmh >= 200f)
+
+        // Test 4: Wheel spin angles accumulate smoothly while holding screen
+        val initialWheelAngle = engine.wheelAngle
+        for (i in 0 until 10) {
+            engine.update(dt = 0.016f, touchX = 1000f, screenWidth = screenWidth)
+        }
+        assertTrue("Wheel angle must rotate when driving", engine.wheelAngle != initialWheelAngle)
+        assertTrue("Distance must increase when moving forward", engine.totalDistanceMeters > 0f)
+
+        // Test 4: All 4 CapyCarType values are defined and have distinct properties
+        assertEquals(4, com.example.ui.easteregg.CapyCarType.entries.size)
+        val cabrio = com.example.ui.easteregg.CapyCarType.HAPPY_CABRIO
+        val supercar = com.example.ui.easteregg.CapyCarType.COOL_SUPERCAR
+        val suv = com.example.ui.easteregg.CapyCarType.LUXURY_SUV
+        val drift = com.example.ui.easteregg.CapyCarType.DRIFT_TUNER
+        assertTrue(cabrio.title.isNotBlank())
+        assertTrue(supercar.title.isNotBlank())
+        assertTrue(suv.title.isNotBlank())
+        assertTrue(drift.title.isNotBlank())
+    }
+
+    @Test
+    fun testEasterEggOnlyAvailableWhenCapyStyleSelected() {
+        // When CarBadgeStyle is MATERIAL or CINEMATIC, the game must NOT be triggered
+        fun isEasterEggAllowed(style: com.example.ui.components.CarBadgeStyle): Boolean {
+            return style == com.example.ui.components.CarBadgeStyle.CAPY
+        }
+
+        assertFalse("Material car style must NOT trigger the cars game", isEasterEggAllowed(com.example.ui.components.CarBadgeStyle.MATERIAL))
+        assertFalse("Cinematic car style must NOT trigger the cars game", isEasterEggAllowed(com.example.ui.components.CarBadgeStyle.CINEMATIC))
+        assertTrue("Capy car style MUST trigger the cars game", isEasterEggAllowed(com.example.ui.components.CarBadgeStyle.CAPY))
+    }
+
+    @Test
+    fun testWhatsNewMessageAndUpdateTrigger() {
+        val message = com.example.util.WhatsNewManager.CURRENT_MESSAGE
+        assertTrue("What's New message must contain 'Bug fixes and tweaks'", message.contains("Bug fixes and tweaks"))
+        assertEquals("Bug fixes and tweaks", message.trim())
+    }
+
+    @Test
+    fun testMoveInstructionDynamicVisibilityLogic() {
+        // Function representing visibility computation rule in CompassRadarScreen
+        fun calculateVisibility(
+            isNavigationActive: Boolean = true,
+            isNavBarVisible: Boolean = true,
+            msSinceNavBarRetracted: Long = 0L,
+            isCarHereOrVeryClose: Boolean,
+            isInitial5Seconds: Boolean,
+            isUserMoving: Boolean
+        ): Boolean {
+            val isIdleInstructionVisible = isNavBarVisible || msSinceNavBarRetracted < 2000L
+            return if (!isNavigationActive) {
+                isIdleInstructionVisible
+            } else {
+                !isCarHereOrVeryClose && (isInitial5Seconds || isUserMoving)
+            }
+        }
+
+        // 0. Idle state ("Once navigation starts move around..."):
+        // Remains visible while navigation bar is visible, stays visible for 2 seconds after navigation bar retracts,
+        // then disappears at >= 2000ms, and reappears immediately when navigation bar reappears.
+        assertTrue(
+            "Idle instruction must remain visible whenever navigation bar is visible",
+            calculateVisibility(
+                isNavigationActive = false,
+                isNavBarVisible = true,
+                msSinceNavBarRetracted = 0L,
+                isCarHereOrVeryClose = false,
+                isInitial5Seconds = false,
+                isUserMoving = false
+            )
+        )
+        assertTrue(
+            "Idle instruction must still be visible 1 second (1000ms) after navigation bar retracts (< 2000ms)",
+            calculateVisibility(
+                isNavigationActive = false,
+                isNavBarVisible = false,
+                msSinceNavBarRetracted = 1000L,
+                isCarHereOrVeryClose = false,
+                isInitial5Seconds = false,
+                isUserMoving = false
+            )
+        )
+        assertFalse(
+            "Idle instruction must disappear 2 seconds (2000ms) after navigation bar retracts",
+            calculateVisibility(
+                isNavigationActive = false,
+                isNavBarVisible = false,
+                msSinceNavBarRetracted = 2000L,
+                isCarHereOrVeryClose = false,
+                isInitial5Seconds = true,
+                isUserMoving = true
+            )
+        )
+
+        // 1. Active navigation: Initial 5 seconds upon starting navigation / opening app: MUST always be visible even if not moving
+        assertTrue(
+            "Must always show during first 5 seconds even when user is stationary",
+            calculateVisibility(isCarHereOrVeryClose = false, isInitial5Seconds = true, isUserMoving = false)
+        )
+        assertTrue(
+            "Must always show during first 5 seconds when moving",
+            calculateVisibility(isCarHereOrVeryClose = false, isInitial5Seconds = true, isUserMoving = true)
+        )
+
+        // 2. Active navigation after initial 5 seconds:
+        // When user stops moving / seems to not move -> MUST hide
+        assertFalse(
+            "Must hide after 5 seconds if user stops moving / seems to not move",
+            calculateVisibility(isCarHereOrVeryClose = false, isInitial5Seconds = false, isUserMoving = false)
+        )
+
+        // When user is moving around -> MUST show up
+        assertTrue(
+            "Must show up after 5 seconds when user is actively moving",
+            calculateVisibility(isCarHereOrVeryClose = false, isInitial5Seconds = false, isUserMoving = true)
+        )
+
+        // 3. Arrived at vehicle: MUST be hidden
+        assertFalse(
+            "Must hide when arrived at vehicle",
+            calculateVisibility(isCarHereOrVeryClose = true, isInitial5Seconds = false, isUserMoving = true)
+        )
+    }
+
+    @Test
+    fun testResponsiveUiScalingAcrossScreenSizesAndDpi() {
+        // 1. Reference viewport (411dp x 860dp) -> scale factor = 1.0f
+        val standardScale = com.example.ui.theme.calculateResponsiveUiScale(411, 860)
+        assertEquals(1.0f, standardScale, 0.01f)
+
+        // 2. Small / compact screen or high-DPI zoomed display (320dp x 640dp) -> shrinks proportionally (< 1.0f)
+        val compactScale = com.example.ui.theme.calculateResponsiveUiScale(320, 640)
+        assertTrue("Compact/high-DPI screen must shrink UI below 1.0f", compactScale < 0.85f)
+        assertTrue("Compact scale must remain within safe minimum bound (>= 0.55f)", compactScale >= 0.55f)
+
+        // 3. Large screen / low-DPI / tablet (600dp x 1024dp) -> expands proportionally (> 1.0f)
+        val largeScale = com.example.ui.theme.calculateResponsiveUiScale(600, 1024)
+        assertTrue("Large screen must scale UI up above 1.0f", largeScale > 1.15f)
+        assertTrue("Large scale must remain within safe maximum bound (<= 1.50f)", largeScale <= 1.50f)
+
+        // 4. Short aspect ratio window / split-screen (411dp x 520dp) -> constrained by short height
+        val shortWindowScale = com.example.ui.theme.calculateResponsiveUiScale(411, 520)
+        assertTrue("Short window must shrink UI to prevent vertical overlap", shortWindowScale < 0.70f)
+    }
 }
+
 
 

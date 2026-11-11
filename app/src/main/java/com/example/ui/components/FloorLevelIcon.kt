@@ -41,6 +41,24 @@ fun FloorLevelIcon(
         val lineEndX = w * 0.84f
 
         when (floorId) {
+            "none" -> {
+                // No floor / none: an X icon
+                val pad = minDim * 0.28f
+                drawLine(
+                    color = tint,
+                    start = Offset(w * 0.5f - pad, h * 0.5f - pad),
+                    end = Offset(w * 0.5f + pad, h * 0.5f + pad),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = tint,
+                    start = Offset(w * 0.5f + pad, h * 0.5f - pad),
+                    end = Offset(w * 0.5f - pad, h * 0.5f + pad),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round
+                )
+            }
             "ground" -> {
                 // Ground level: just a line
                 val lineY = h * 0.50f

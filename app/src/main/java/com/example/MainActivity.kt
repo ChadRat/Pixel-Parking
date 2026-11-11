@@ -178,12 +178,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        viewModel.startLocationTracking()
+    }
+
     override fun onResume() {
         super.onResume()
         configureHighRefreshRate()
         if (com.example.service.AutoParkLocationService.isMonitoringEnabled(this)) {
             com.example.service.AutoParkLocationService.startMonitoring(this)
         }
+        if (com.example.util.WhatsNewManager.checkShouldShowAfterUpdate(this)) {
+            viewModel.showWhatsNewWindow()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        viewModel.stopLocationTracking()
+        viewModel.stopCompass()
+        com.example.ui.screens.MapTileEngine.clearMemoryCache()
+        com.example.ui.screens.HighZoomVectorEngine.trimMemory(keepAll = false)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -297,7 +313,7 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
     val isEditSpotSheetOpen by viewModel.isEditSpotSheetOpen.collectAsStateWithLifecycle()
 
     val blurRadius by animateDpAsState(
-        targetValue = if (gpsSignalError != null || showWhatsNew || selectedTab == AppTab.BLUETOOTH_AUTO || isEditSpotSheetOpen) 20.dp else 0.dp,
+        targetValue = if (gpsSignalError != null || showWhatsNew || selectedTab == AppTab.BLUETOOTH_AUTO || selectedTab == AppTab.ABOUT || isEditSpotSheetOpen) 20.dp else 0.dp,
         animationSpec = tween(durationMillis = 300),
         label = "screen_blur"
     )
@@ -352,6 +368,7 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
     }
 
     var isNavBarVisible by rememberSaveable { mutableStateOf(true) }
+    var isHistoryMapOpen by rememberSaveable { mutableStateOf(false) }
     var waypointInteractionCounter by remember { mutableLongStateOf(0L) }
 
     val isWaypointTabActive by remember {
@@ -495,6 +512,7 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
             modifier = Modifier.fillMaxSize(),
             key = { mainTabs[it].name },
             beyondViewportPageCount = 0,
+            userScrollEnabled = !isHistoryMapOpen,
             flingBehavior = pagerFlingBehavior
         ) { pageIndex ->
             Box(
@@ -537,7 +555,12 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
                         AppTab.HISTORY -> {
                             HistoryScreen(
                                 viewModel = viewModel,
-                                spots = allSpots
+                                spots = allSpots,
+                                isNavBarVisible = isNavBarVisible,
+                                onMapOpenChanged = { isOpen ->
+                                    isHistoryMapOpen = isOpen
+                                    isNavBarVisible = !isOpen
+                                }
                             )
                         }
 
@@ -564,7 +587,7 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
             }
 
             AnimatedVisibility(
-                visible = isNavBarVisible,
+                visible = isNavBarVisible && !isHistoryMapOpen,
                 enter = slideInVertically(
                     animationSpec = spring(
                         dampingRatio = 0.82f,
@@ -630,9 +653,15 @@ fun PixelParkingApp(viewModel: ParkingViewModel) {
         }
     }
 
+    val isDevFunSettingsIcons by viewModel.isDevFunSettingsIcons.collectAsStateWithLifecycle()
     if (showWhatsNew) {
+        val strings = LocalAppStrings.current
+        val activeWhatsNewMsg = remember(whatsNewMessage, strings) {
+            com.example.util.WhatsNewManager.getActiveMessage(context, strings)
+        }
         WhatsNewSheet(
-            message = whatsNewMessage,
+            message = activeWhatsNewMsg,
+            isFunIcons = isDevFunSettingsIcons,
             onDismiss = { viewModel.dismissWhatsNewWindow() }
         )
     }
@@ -836,27 +865,20 @@ fun PixelFloatingBottomNavBar(
                                     else -> 0
                                 }
 
-                                if (item.tab == AppTab.COMPASS_RADAR && hasActiveSpot && !isSelected) {
-                                    BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.error) }) {
-                                        AnimatedNavIcon(
-                                            tab = item.tab,
-                                            icon = item.unselectedIcon,
-                                            contentDescription = item.label,
-                                            tint = animatedContentColor,
-                                            triggerCount = itemTriggerCount,
-                                            size = 20.dp
-                                        )
-                                    }
+                                val iconTint = if (item.tab == AppTab.COMPASS_RADAR && hasActiveSpot && !isSelected) {
+                                    MaterialTheme.colorScheme.primary
                                 } else {
-                                    AnimatedNavIcon(
-                                        tab = item.tab,
-                                        icon = if (isSelected) item.selectedIcon else item.unselectedIcon,
-                                        contentDescription = item.label,
-                                        tint = animatedContentColor,
-                                        triggerCount = itemTriggerCount,
-                                        size = 20.dp
-                                    )
+                                    animatedContentColor
                                 }
+
+                                AnimatedNavIcon(
+                                    tab = item.tab,
+                                    icon = if (isSelected) item.selectedIcon else item.unselectedIcon,
+                                    contentDescription = item.label,
+                                    tint = iconTint,
+                                    triggerCount = itemTriggerCount,
+                                    size = 20.dp
+                                )
 
                                 AnimatedVisibility(
                                     visible = isSelected,

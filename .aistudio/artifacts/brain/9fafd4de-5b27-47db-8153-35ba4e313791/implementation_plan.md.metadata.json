@@ -1,6 +1,0 @@
-{
-  "summary":  "Implementation plan to fix the 0-byte release APK download and sign the release build with the debug key for seamless in-place updates.",
-  "updatedAt":  "2026-10-29T22:18:09.238206095Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}

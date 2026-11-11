@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +23,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import com.example.ui.easteregg.CapyCarType
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
@@ -80,15 +83,16 @@ fun PixelAnimatedCarBadge(
     badgeColor: Color = Color(0xFFB8D19F),
     satelliteColor: Color = Color(0xFFB4C8A2),
     dotColor: Color = Color(0xFFFAF2DC),
-    iconColor: Color = Color(0xFF283B1D)
+    iconColor: Color = Color(0xFF283B1D),
+    onCarLongClick: ((CapyCarType) -> Unit)? = null
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "scallopBadgeAnimation")
 
-    // Realistic photographic image assets for Cinematic mode
-    val evo8Bitmap = if (style == CarBadgeStyle.CINEMATIC) ImageBitmap.imageResource(id = R.drawable.img_car_evo8) else null
-    val rangeRoverBitmap = if (style == CarBadgeStyle.CINEMATIC) ImageBitmap.imageResource(id = R.drawable.img_car_rangerover) else null
-    val lamboBitmap = if (style == CarBadgeStyle.CINEMATIC) ImageBitmap.imageResource(id = R.drawable.img_car_lamborghini) else null
-    val evoXBitmap = if (style == CarBadgeStyle.CINEMATIC) ImageBitmap.imageResource(id = R.drawable.img_car_evox) else null
+    // All car badges render via custom vector Canvas drawing; avoid decoding unused density-scaled PNG bitmaps into RAM
+    val evo8Bitmap: ImageBitmap? = null
+    val rangeRoverBitmap: ImageBitmap? = null
+    val lamboBitmap: ImageBitmap? = null
+    val evoXBitmap: ImageBitmap? = null
 
     // Ultra smooth 1-turn (0 -> 360 deg) clockwise, then 1-turn (360 -> 0 deg) counter-clockwise
     val mainRotationAnim = infiniteTransition.animateFloat(
@@ -136,7 +140,24 @@ fun PixelAnimatedCarBadge(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(size),
+            .height(size)
+            .pointerInput(onCarLongClick, style) {
+                if (onCarLongClick != null && style == CarBadgeStyle.CAPY) {
+                    detectTapGestures(
+                        onLongPress = { offset ->
+                            val cx = this.size.width / 2f
+                            val cy = this.size.height / 2f
+                            val car = when {
+                                offset.x < cx && offset.y < cy -> CapyCarType.HAPPY_CABRIO
+                                offset.x < cx && offset.y >= cy -> CapyCarType.COOL_SUPERCAR
+                                offset.x >= cx && offset.y < cy -> CapyCarType.LUXURY_SUV
+                                else -> CapyCarType.DRIFT_TUNER
+                            }
+                            onCarLongClick(car)
+                        }
+                    )
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {

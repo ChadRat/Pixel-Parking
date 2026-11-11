@@ -7,6 +7,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import com.example.ui.easteregg.CapyCarType
+import com.example.ui.easteregg.CapyUniverseGameScreen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -126,10 +128,12 @@ fun HomeScreen(
     val timerRemainingSeconds by viewModel.timerRemainingSeconds.collectAsStateWithLifecycle()
     val isParkingTimerEnabled by viewModel.isParkingTimerFeatureEnabled.collectAsStateWithLifecycle()
     val isDevFunWalkAwayIcon by viewModel.isDevFunWalkAwayIcon.collectAsStateWithLifecycle()
+    val isCapyGameEnabled by viewModel.isDevCapyGameEnabled.collectAsStateWithLifecycle()
     val showTimerDialog by viewModel.showTimerDialog.collectAsStateWithLifecycle()
 
     var showNewParkDialog by remember { mutableStateOf(false) }
     var tapTimestamps by remember { mutableStateOf(emptyList<Long>()) }
+    var activeEasterEggCar by remember { mutableStateOf<CapyCarType?>(null) }
 
     val smoothFling = com.example.util.rememberSmoothFlingBehavior()
 
@@ -236,7 +240,8 @@ fun HomeScreen(
                 onOpenTimer = { viewModel.openParkingTimer() },
                 onManualPark = { showNewParkDialog = true },
                 onFoundCar = { viewModel.markCarFound() },
-                onRefreshGps = { viewModel.refreshCurrentLocation() }
+                onRefreshGps = { viewModel.refreshCurrentLocation() },
+                onCarLongClick = if (carBadgeStyle == com.example.ui.components.CarBadgeStyle.CAPY && isCapyGameEnabled) { car -> activeEasterEggCar = car } else null
             )
         }
 
@@ -301,6 +306,13 @@ fun HomeScreen(
             }
         )
     }
+
+    if (activeEasterEggCar != null && carBadgeStyle == com.example.ui.components.CarBadgeStyle.CAPY && isCapyGameEnabled) {
+        CapyUniverseGameScreen(
+            initialCarType = activeEasterEggCar!!,
+            onDismiss = { activeEasterEggCar = null }
+        )
+    }
 }
 
 @Composable
@@ -318,7 +330,8 @@ fun EmptyParkingStateCard(
     onOpenTimer: () -> Unit = {},
     onManualPark: () -> Unit,
     onFoundCar: () -> Unit,
-    onRefreshGps: () -> Unit
+    onRefreshGps: () -> Unit,
+    onCarLongClick: ((CapyCarType) -> Unit)? = null
 ) {
     val strings = LocalAppStrings.current
     val hasActiveSpot = activeSpot != null
@@ -342,7 +355,8 @@ fun EmptyParkingStateCard(
                     .padding(top = 2.dp, bottom = 2.dp),
                 size = 176.dp,
                 style = carBadgeStyle,
-                capyVariant = capyVariant
+                capyVariant = capyVariant,
+                onCarLongClick = if (carBadgeStyle == com.example.ui.components.CarBadgeStyle.CAPY) onCarLongClick else null
             )
 
             Spacer(modifier = Modifier.height(12.dp))

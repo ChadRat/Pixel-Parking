@@ -48,6 +48,8 @@
     <application
         android:name=".AutoParkApplication"
         android:allowBackup="true"
+        android:debuggable="false"
+        tools:replace="android:debuggable"
         android:hardwareAccelerated="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -55,7 +57,8 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MyApplication">
+        android:theme="@style/Theme.MyApplication"
+        tools:ignore="HardcodedDebugMode">
 
         <activity
             android:name=".MainActivity"

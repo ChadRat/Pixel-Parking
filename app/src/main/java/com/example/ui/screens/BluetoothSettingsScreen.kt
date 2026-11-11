@@ -70,6 +70,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -92,6 +93,12 @@ fun BluetoothSettingsSheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val showWhatsNew by viewModel.showWhatsNew.collectAsStateWithLifecycle()
+    val sheetBlurRadius by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (showWhatsNew) 24.dp else 0.dp,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 300),
+        label = "bt_sheet_blur"
+    )
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -106,6 +113,7 @@ fun BluetoothSettingsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.95f)
+                .then(if (sheetBlurRadius > 0.dp) Modifier.blur(sheetBlurRadius) else Modifier)
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 16.dp)
@@ -152,15 +160,12 @@ fun BluetoothSettingsContent(
     }
 
     LaunchedEffect(Unit) {
+        viewModel.syncSystemPairedDevices()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val hasPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
             if (!hasPerm) {
                 btPermissionLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN))
-            } else {
-                viewModel.syncSystemPairedDevices()
             }
-        } else {
-            viewModel.syncSystemPairedDevices()
         }
     }
 
@@ -233,15 +238,12 @@ fun BluetoothSettingsContent(
 
             IconButton(
                 onClick = {
+                    viewModel.syncSystemPairedDevices()
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         val hasPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
                         if (!hasPerm) {
                             btPermissionLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN))
-                        } else {
-                            viewModel.syncSystemPairedDevices()
                         }
-                    } else {
-                        viewModel.syncSystemPairedDevices()
                     }
                 },
                 modifier = Modifier
@@ -384,7 +386,7 @@ fun BluetoothSettingsContent(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Pair your phone to your car's Bluetooth in Android Settings, or tap 'Pair New' above.",
+                                text = "Pair your phone to your car's Bluetooth in Android Settings, or tap 'Pair New' above. Otherwise your Bluetooth may be off.",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 4.dp)

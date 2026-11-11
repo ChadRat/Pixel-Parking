@@ -262,7 +262,8 @@ fun CompassRadarNeedle(
             val cx = size.width / 2f
             val cy = size.height / 2f
             val maxRadius = size.minDimension / 2f * 0.88f
-            val strokeWidthPx = 3.5.dp.toPx()
+            val canvasScale = (size.minDimension / 280.dp.toPx()).coerceIn(0.55f, 1.35f)
+            val strokeWidthPx = 3.5.dp.toPx() * canvasScale
 
             // 1. Draw outer 12-lobed scalloped boundary stroke (spins clockwise very slowly)
             rotate(degrees = outerRotationAngle, pivot = Offset(cx, cy)) {
@@ -304,10 +305,10 @@ fun CompassRadarNeedle(
                 )
             }
 
-            // 3. Draw fixed-size small rounded navigation arrow centered inside
-            // Stays constant small size while the surrounding scalloped shape expands
-            val arrowWidth = 32.dp.toPx()
-            val arrowHeight = 44.dp.toPx()
+            // 3. Draw proportional rounded navigation arrow centered inside
+            // Stays constant relative size while the surrounding scalloped shape expands
+            val arrowWidth = 32.dp.toPx() * canvasScale
+            val arrowHeight = 44.dp.toPx() * canvasScale
             val arrowPath = buildDirectionalArrowPath(cx, cy, arrowWidth, arrowHeight)
 
             rotate(degrees = animatedAngle, pivot = Offset(cx, cy)) {

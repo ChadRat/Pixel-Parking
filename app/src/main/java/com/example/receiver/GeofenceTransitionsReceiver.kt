@@ -57,6 +57,12 @@ class GeofenceTransitionsReceiver : BroadcastReceiver() {
             return
         }
 
+        if (!GeofenceManager.isWalkAwayEnabled(context) && !isSimulated) {
+            return
+        }
+
+        val prefs = context.getSharedPreferences(GeofenceManager.PREFS_NAME, Context.MODE_PRIVATE)
+
         // --- Handle Background Location Updates from PendingIntent ---
         if (isLocationUpdate && com.google.android.gms.location.LocationResult.hasResult(intent)) {
             val result = com.google.android.gms.location.LocationResult.extractResult(intent)
@@ -71,14 +77,6 @@ class GeofenceTransitionsReceiver : BroadcastReceiver() {
                     speedMps = if (loc.hasSpeed()) loc.speed else 0f
                 )
             }
-            return
-        }
-
-        val prefs = context.getSharedPreferences(GeofenceManager.PREFS_NAME, Context.MODE_PRIVATE)
-        val isGeofenceAutoParkEnabled = prefs.getBoolean(GeofenceManager.KEY_GEOFENCE_ENABLED, false)
-
-        if (!isGeofenceAutoParkEnabled && !isSimulated) {
-            Log.d(TAG, "Geofence auto-park is disabled in settings. Ignoring event.")
             return
         }
 
@@ -185,13 +183,13 @@ class GeofenceTransitionsReceiver : BroadcastReceiver() {
             val simCarLat = intent.getDoubleExtra("car_lat", 0.0)
             val simCarLng = intent.getDoubleExtra("car_lng", 0.0)
 
-            val candidateLat = prefs.getFloat(GeofenceManager.KEY_CAR_STOP_LAT, 0f).toDouble()
-            val candidateLng = prefs.getFloat(GeofenceManager.KEY_CAR_STOP_LNG, 0f).toDouble()
+            val candidateLat = GeofenceManager.getExactCoordinate(prefs, GeofenceManager.KEY_CAR_STOP_LAT, 0.0)
+            val candidateLng = GeofenceManager.getExactCoordinate(prefs, GeofenceManager.KEY_CAR_STOP_LNG, 0.0)
             val candidateAlt = prefs.getFloat(GeofenceManager.KEY_CAR_STOP_ALT, 0f).toDouble()
             val candidateAcc = prefs.getFloat(GeofenceManager.KEY_CAR_STOP_ACC, 10f)
 
-            val centerLat = prefs.getFloat(GeofenceManager.KEY_GEOFENCE_CENTER_LAT, 0f).toDouble()
-            val centerLng = prefs.getFloat(GeofenceManager.KEY_GEOFENCE_CENTER_LNG, 0f).toDouble()
+            val centerLat = GeofenceManager.getExactCoordinate(prefs, GeofenceManager.KEY_GEOFENCE_CENTER_LAT, 0.0)
+            val centerLng = GeofenceManager.getExactCoordinate(prefs, GeofenceManager.KEY_GEOFENCE_CENTER_LNG, 0.0)
 
             var carLat: Double = 0.0
             var carLng: Double = 0.0

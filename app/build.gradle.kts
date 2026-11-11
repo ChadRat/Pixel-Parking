@@ -17,8 +17,8 @@ android {
     applicationId = "com.PixelParking.app"
     minSdk = 24
     targetSdk = 36
-    versionCode = 67
-    versionName = "0.7"
+    versionCode = 70
+    versionName = "0.72"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -47,12 +47,18 @@ android {
     release {
       initWith(getByName("debug"))
       isDebuggable = false
+      isJniDebuggable = false
       signingConfig = signingConfigs.getByName("debugConfig")
       isMinifyEnabled = false
     }
     debug {
       signingConfig = signingConfigs.getByName("debugConfig")
       isDebuggable = false
+      isJniDebuggable = false
+    }
+    configureEach {
+      isDebuggable = false
+      isJniDebuggable = false
     }
   }
 
@@ -148,18 +154,23 @@ dependencies {
   androidTestImplementation(libs.androidx.espresso.core)
   androidTestImplementation(libs.androidx.junit)
   androidTestImplementation(libs.androidx.runner)
-  debugImplementation(libs.androidx.compose.ui.test.manifest)
-  debugImplementation(libs.androidx.compose.ui.tooling)
+  // debugImplementation(libs.androidx.compose.ui.test.manifest)
+  // debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
   // "ksp"(libs.moshi.kotlin.codegen)
 }
 
-// Ensure latest wear-release.apk is copied into assets
+// Ensure latest non-debuggable wear APK is copied into assets and stale wear-debug.apk is removed
 val copyWearReleaseApkToAssets = tasks.register("copyWearReleaseApkToAssets") {
+  dependsOn(":wear:assembleDebug")
   doLast {
+    val staleDebugAsset = file("src/main/assets/wear-debug.apk")
+    if (staleDebugAsset.exists()) {
+      staleDebugAsset.delete()
+    }
     val candidates = listOf(
-      file("${rootDir}/wear-release.apk"),
-      file("${rootDir}/wear/build/outputs/apk/release/wear-release.apk")
+      file("${rootDir}/wear/build/outputs/apk/release/wear-release.apk"),
+      file("${rootDir}/wear/build/outputs/apk/debug/wear-debug.apk")
     )
     val src = candidates.firstOrNull { it.exists() && it.length() > 0 }
     if (src != null) {
@@ -182,8 +193,6 @@ val syncAppReleaseApkToRoot = tasks.register("syncAppReleaseApkToRoot") {
     )
     val src = candidates.firstOrNull { it.exists() && it.length() > 0 }
     if (src != null) {
-      src.copyTo(file("${rootDir}/PixelParking-release.apk"), overwrite = true)
-      src.copyTo(file("${rootDir}/release.apk"), overwrite = true)
       val buildOutputsDir = file("${rootDir}/.build-outputs")
       if (buildOutputsDir.exists()) {
         src.copyTo(file("${rootDir}/.build-outputs/app-release.apk"), overwrite = true)
@@ -195,15 +204,24 @@ val syncAppReleaseApkToRoot = tasks.register("syncAppReleaseApkToRoot") {
 
 val syncAppDebugApkToRoot = tasks.register("syncAppDebugApkToRoot") {
   doLast {
+    listOf(
+      "PixelParking-debug.apk",
+      "PixelParking-release.apk",
+      "debug.apk",
+      "release.apk",
+      "wear-debug.apk",
+      "wear-release.apk"
+    ).forEach { extraName ->
+      val f = file("${rootDir}/$extraName")
+      if (f.exists()) f.delete()
+    }
     val candidates = listOf(
       file("build/outputs/apk/debug/app-debug.apk"),
       file("build/intermediates/apk/debug/app-debug.apk")
     )
     val src = candidates.firstOrNull { it.exists() && it.length() > 0 }
     if (src != null) {
-      src.copyTo(file("${rootDir}/PixelParking-debug.apk"), overwrite = true)
       src.copyTo(file("${rootDir}/app-debug.apk"), overwrite = true)
-      src.copyTo(file("${rootDir}/debug.apk"), overwrite = true)
       val buildOutputsDir = file("${rootDir}/.build-outputs")
       if (buildOutputsDir.exists()) {
         src.copyTo(file("${rootDir}/.build-outputs/app-debug.apk"), overwrite = true)

@@ -14,13 +14,82 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+
+val LocalUiScaleFactor = compositionLocalOf { 1f }
+
+/**
+ * Calculates a proportional UI scale factor based on the user's screen dimensions in dp
+ * (which accounts for both physical screen size and custom screen DPI / display zoom).
+ *
+ * Baseline design reference: 411dp short side x 860dp long side.
+ * - Shrinks proportionally on compact screens or high-DPI display zoom so elements never overlap.
+ * - Expands proportionally on larger screens or low-DPI settings so the UI scales up naturally.
+ */
+fun calculateResponsiveUiScale(
+    screenWidthDp: Int,
+    screenHeightDp: Int,
+    referenceShortSideDp: Float = 411f,
+    referenceLongSideDp: Float = 860f
+): Float {
+    val w = screenWidthDp.coerceAtLeast(200).toFloat()
+    val h = screenHeightDp.coerceAtLeast(320).toFloat()
+    val shortSide = minOf(w, h)
+    val longSide = maxOf(w, h)
+
+    val shortScale = shortSide / referenceShortSideDp
+    val longScale = longSide / referenceLongSideDp
+
+    val rawScale = if (shortScale < 1f || longScale < 1f) {
+        minOf(shortScale, longScale)
+    } else {
+        (shortScale * 0.65f + longScale * 0.35f).coerceAtMost(shortScale)
+    }
+
+    return rawScale.coerceIn(0.55f, 1.50f)
+}
+
+/**
+ * Wraps content (such as main screens, bottom sheets, or dialogs) with adaptive [LocalDensity]
+ * so all `.dp` and `.sp` dimensions automatically shrink or grow according to screen size and DPI.
+ */
+@Composable
+fun ProvideAdaptiveDimensions(
+    content: @Composable () -> Unit
+) {
+    val configuration = LocalConfiguration.current
+    val baseDensity = LocalDensity.current
+
+    val uiScale = remember(configuration.screenWidthDp, configuration.screenHeightDp) {
+        calculateResponsiveUiScale(
+            screenWidthDp = configuration.screenWidthDp,
+            screenHeightDp = configuration.screenHeightDp
+        )
+    }
+
+    val adaptiveDensity = remember(baseDensity.density, baseDensity.fontScale, uiScale) {
+        Density(
+            density = (baseDensity.density * uiScale).coerceAtLeast(0.75f),
+            fontScale = baseDensity.fontScale.coerceIn(0.85f, 1.12f)
+        )
+    }
+
+    CompositionLocalProvider(
+        LocalDensity provides adaptiveDensity,
+        LocalUiScaleFactor provides uiScale,
+        content = content
+    )
+}
 
 enum class AppThemeMode {
     SYSTEM,
@@ -210,14 +279,16 @@ fun MyApplicationTheme(
         createAppTypography(textWeight)
     }
 
-    CompositionLocalProvider(
-        LocalAppTextWeight provides FontWeight(textWeight)
-    ) {
-        MaterialTheme(
-            colorScheme = targetColorScheme,
-            typography = appTypography,
-            shapes = PixelExpressiveShapes,
-            content = content
-        )
+    ProvideAdaptiveDimensions {
+        CompositionLocalProvider(
+            LocalAppTextWeight provides FontWeight(textWeight)
+        ) {
+            MaterialTheme(
+                colorScheme = targetColorScheme,
+                typography = appTypography,
+                shapes = PixelExpressiveShapes,
+                content = content
+            )
+        }
     }
 }

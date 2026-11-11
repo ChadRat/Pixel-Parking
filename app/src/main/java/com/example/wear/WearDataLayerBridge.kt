@@ -56,7 +56,9 @@ class WearDataLayerBridge private constructor(private val context: Context) {
 
                     val prefs = context.getSharedPreferences("pixel_parking_prefs", Context.MODE_PRIVATE)
                     val crownOnRight = prefs.getBoolean("wear_crown_on_right", true)
+                    val aodBatteryMode = prefs.getString("aod_battery_mode", "PERCENTAGE") ?: "PERCENTAGE"
                     dataMap.putBoolean("crown_on_right", crownOnRight)
+                    dataMap.putString("aod_battery_mode", aodBatteryMode)
                 }
 
                 val putDataReq = putDataMapReq.asPutDataRequest().setUrgent()
@@ -98,10 +100,12 @@ class WearDataLayerBridge private constructor(private val context: Context) {
      */
     fun syncCrownPosition(crownOnRight: Boolean) {
         scope.launch {
+            val prefs = context.getSharedPreferences("pixel_parking_prefs", Context.MODE_PRIVATE)
+            val aodBatteryMode = prefs.getString("aod_battery_mode", "PERCENTAGE") ?: "PERCENTAGE"
             // 1. Send instant direct message to all active nodes for real-time immediate update
             try {
                 val nodes = nodeClient.connectedNodes.await()
-                val payload = (if (crownOnRight) "1" else "0").toByteArray(Charsets.UTF_8)
+                val payload = "${if (crownOnRight) "1" else "0"},$aodBatteryMode".toByteArray(Charsets.UTF_8)
                 nodes.forEach { node ->
                     messageClient.sendMessage(node.id, PATH_CONFIG, payload)
                 }
@@ -113,11 +117,12 @@ class WearDataLayerBridge private constructor(private val context: Context) {
             try {
                 val putDataMapReq = PutDataMapRequest.create(PATH_CONFIG).apply {
                     dataMap.putBoolean("crown_on_right", crownOnRight)
+                    dataMap.putString("aod_battery_mode", aodBatteryMode)
                     dataMap.putLong("sync_timestamp", System.currentTimeMillis())
                 }
                 val putDataReq = putDataMapReq.asPutDataRequest().setUrgent()
                 dataClient.putDataItem(putDataReq).await()
-                Log.d(TAG, "Synced crown position: crownOnRight=$crownOnRight")
+                Log.d(TAG, "Synced crown position: crownOnRight=$crownOnRight, aodBatteryMode=$aodBatteryMode")
             } catch (e: Exception) {
                 Log.w(TAG, "Could not sync crown position: ${e.message}")
             }

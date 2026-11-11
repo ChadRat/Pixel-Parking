@@ -22,11 +22,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -81,6 +84,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -101,6 +105,8 @@ import com.example.ui.components.CustomFarAwayIcon
 import com.example.ui.components.EditSpotDialog
 import com.example.ui.components.GeofenceIcon
 import com.example.ui.components.UndergroundParkingIcon
+import com.example.ui.components.WaypointMapsTimerStyleButton
+import com.example.ui.i18n.AppLanguage
 import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.PixelRed
 import com.example.ui.viewmodel.ParkingViewModel
@@ -116,10 +122,26 @@ import kotlin.math.roundToInt
 fun HistoryScreen(
     viewModel: ParkingViewModel,
     spots: List<ParkingSpot>,
+    isNavBarVisible: Boolean = true,
+    onMapOpenChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val strings = LocalAppStrings.current
+    val appLanguage by viewModel.appLanguage.collectAsState()
+    val isGreek = appLanguage == AppLanguage.GREEK
+    var showHistoryMap by remember { mutableStateOf(false) }
+
+    LaunchedEffect(showHistoryMap) {
+        onMapOpenChanged(showHistoryMap)
+        if (!showHistoryMap) {
+            delay(230)
+            if (!showHistoryMap) {
+                MapTileEngine.onMapClosed(appInBackground = false)
+                HighZoomVectorEngine.onMapClosed()
+            }
+        }
+    }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchVisible by remember { mutableStateOf(false) }
     val isSearchExpanded = isSearchVisible || searchQuery.isNotBlank()
@@ -149,17 +171,6 @@ fun HistoryScreen(
         )
     }
 
-    // 30-item windowing to eliminate lagging even with 500+ entries
-    val pageSize = 30
-    val unloadCount = 20
-    var startIndex by remember(searchQuery) { mutableIntStateOf(0) }
-    val totalCount = filteredSpots.size
-    val endIndex = minOf(startIndex + pageSize, totalCount)
-    val windowSpots = remember(filteredSpots, startIndex, endIndex) {
-        if (totalCount == 0) emptyList()
-        else filteredSpots.subList(startIndex.coerceIn(0, totalCount), endIndex.coerceIn(0, totalCount))
-    }
-
     val isSheetOpen = editingSpot != null
     val carBadgeStyle by viewModel.carBadgeStyle.collectAsState()
     val capyVariant by viewModel.capyVariant.collectAsState()
@@ -171,51 +182,29 @@ fun HistoryScreen(
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
-    // Sliding window scroll monitor: load next 30, unload top 20 when close to end
-    LaunchedEffect(listState, totalCount) {
-        snapshotFlow {
-            val layoutInfo = listState.layoutInfo
-            val visible = layoutInfo.visibleItemsInfo
-            val lastVisible = visible.lastOrNull()?.index ?: 0
-            val firstVisible = visible.firstOrNull()?.index ?: 0
-            val totalItems = layoutInfo.totalItemsCount
-            Triple(firstVisible, lastVisible, totalItems)
-        }.collect { (firstVisible, lastVisible, totalItems) ->
-            if (totalCount > pageSize) {
-                // User scrolled close enough to end of current batch (within 4 items of bottom)
-                if (lastVisible >= totalItems - 4 && endIndex < totalCount) {
-                    val nextStart = (startIndex + unloadCount).coerceAtMost(maxOf(0, totalCount - pageSize))
-                    if (nextStart > startIndex) {
-                        val shift = nextStart - startIndex
-                        startIndex = nextStart
-                        val curFirst = listState.firstVisibleItemIndex
-                        val curOffset = listState.firstVisibleItemScrollOffset
-                        listState.scrollToItem(maxOf(0, curFirst - shift), curOffset)
-                    }
-                } else if (firstVisible <= 2 && startIndex > 0) {
-                    // User scrolled back near top of current batch
-                    val prevStart = maxOf(0, startIndex - unloadCount)
-                    if (prevStart < startIndex) {
-                        val shift = startIndex - prevStart
-                        startIndex = prevStart
-                        val curFirst = listState.firstVisibleItemIndex
-                        val curOffset = listState.firstVisibleItemScrollOffset
-                        listState.scrollToItem(curFirst + shift, curOffset)
-                    }
-                }
-            }
-        }
-    }
+    val animatedBottomSpacerHeight by animateDpAsState(
+        targetValue = if (isNavBarVisible) 102.dp else 24.dp,
+        animationSpec = tween(
+            durationMillis = 650,
+            easing = FastOutSlowInEasing
+        ),
+        label = "history_bottom_spacer_height"
+    )
 
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
     LazyColumn(
         state = listState,
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .padding(horizontal = 18.dp)
             .testTag("history_screen"),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 110.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 160.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         flingBehavior = smoothFling
     ) {
@@ -235,8 +224,8 @@ fun HistoryScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = if (totalCount > pageSize) {
-                                "$totalCount spots (${startIndex + 1}–$endIndex loaded)"
+                            text = if (searchQuery.isNotBlank()) {
+                                "${filteredSpots.size} spots found"
                             } else {
                                 "${spots.size} ${strings.historySubtitle}"
                             },
@@ -249,7 +238,7 @@ fun HistoryScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Small Search Button (squircle shape with well-rounded corners, smaller than the delete button, smooth 1/4 rotation)
+                        // Small Search Button (squircle shape with well-rounded corners, smaller than the 36dp delete button, smooth 1/4 rotation)
                         Surface(
                             onClick = {
                                 val nextState = !isSearchVisible
@@ -259,10 +248,10 @@ fun HistoryScreen(
                                 }
                                 HapticHelper.performSearchQuarterTurnHaptic(context)
                             },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(13.dp),
                             color = MaterialTheme.colorScheme.primaryContainer,
                             modifier = Modifier
-                                .size(28.dp)
+                                .size(32.dp)
                                 .graphicsLayer {
                                     rotationZ = searchButtonRotation
                                 }
@@ -276,7 +265,7 @@ fun HistoryScreen(
                                     imageVector = Icons.Default.Search,
                                     contentDescription = "Search Entries",
                                     modifier = Modifier
-                                        .size(16.dp)
+                                        .size(18.dp)
                                         .graphicsLayer {
                                             rotationZ = -searchButtonRotation
                                         },
@@ -310,20 +299,27 @@ fun HistoryScreen(
                     }
                 }
 
-                // Search Bar smoothly expands downwards and retracts upwards in sync with the 1/4 rotation
+                // Search Bar expands downwards smoothly without overlapping list items
                 AnimatedVisibility(
                     visible = isSearchExpanded,
                     enter = expandVertically(
-                        animationSpec = tween(durationMillis = 800, easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)),
+                        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
                         expandFrom = Alignment.Top
-                    ) + fadeIn(animationSpec = tween(durationMillis = 400)),
+                    ) + fadeIn(animationSpec = tween(durationMillis = 250)),
                     exit = shrinkVertically(
-                        animationSpec = tween(durationMillis = 800, easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)),
+                        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
                         shrinkTowards = Alignment.Top
-                    ) + fadeOut(animationSpec = tween(durationMillis = 350))
+                    ) + fadeOut(animationSpec = tween(durationMillis = 180)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clipToBounds()
                 ) {
-                    Column {
-                        Spacer(modifier = Modifier.height(14.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clipToBounds()
+                            .padding(top = 12.dp)
+                    ) {
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
@@ -363,45 +359,6 @@ fun HistoryScreen(
             }
         }
 
-        // Unloaded Earlier Entries Banner
-        if (startIndex > 0) {
-            item(key = "unloaded_banner") {
-                Surface(
-                    onClick = {
-                        coroutineScope.launch {
-                            startIndex = 0
-                            listState.animateScrollToItem(0)
-                        }
-                    },
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("jump_to_top_banner")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowUp,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "$startIndex older entries unloaded • Tap to jump to top",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-
         if (filteredSpots.isEmpty()) {
             item {
                 Box(
@@ -428,46 +385,54 @@ fun HistoryScreen(
                 }
             }
         } else {
-            items(windowSpots, key = { it.id }) { spot ->
+            items(filteredSpots, key = { it.id }) { spot ->
                 val isPinned = pinnedSpotIds.contains(spot.id)
-                Box(modifier = Modifier.animateItem()) {
-                    SwipeableHistorySpotRow(
-                        spot = spot,
-                        isPinned = isPinned,
-                        onTogglePin = { viewModel.togglePinSpot(spot.id) },
-                        onNavigateMaps = { viewModel.openGoogleMapsNavigation(context, spot) },
-                        onNavigateCompass = { viewModel.setActiveNavigationTarget(spot) },
-                        onShare = { viewModel.shareParkingLocation(context, spot, linkOnly = true) },
-                        onEdit = { editingSpot = spot },
-                        onDelete = { viewModel.deleteSpot(spot.id) }
-                    )
-                }
+                SwipeableHistorySpotRow(
+                    spot = spot,
+                    isPinned = isPinned,
+                    onTogglePin = { viewModel.togglePinSpot(spot.id) },
+                    onNavigateMaps = { viewModel.openGoogleMapsNavigation(context, spot) },
+                    onNavigateCompass = { viewModel.setActiveNavigationTarget(spot) },
+                    onShare = { viewModel.shareParkingLocation(context, spot, linkOnly = true) },
+                    onEdit = { editingSpot = spot },
+                    onDelete = { viewModel.deleteSpot(spot.id) }
+                )
             }
+        }
+    }
 
-            // Loading Next Entries Indicator
-            if (endIndex < totalCount) {
-                item(key = "loading_more_banner") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Loading next entries ($endIndex of $totalCount)...",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
+        // Bottom-Right Floating Map Button styled identically to the Google Maps button in the Waypoint tab
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(horizontal = 20.dp),
+            horizontalAlignment = Alignment.End
+        ) {
+            WaypointMapsTimerStyleButton(
+                text = strings.locationsMap,
+                onClick = { showHistoryMap = true },
+                isFullWidth = false,
+                badgeShape = com.example.ui.components.MapBadgeShape.ROUNDED_PENTAGON,
+                testTag = "history_open_map_button"
+            )
+
+            Spacer(
+                modifier = Modifier
+                    .height(animatedBottomSpacerHeight)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showHistoryMap,
+            enter = fadeIn(animationSpec = tween(260)),
+            exit = fadeOut(animationSpec = tween(220))
+        ) {
+            HistoryHeatmapMapScreen(
+                viewModel = viewModel,
+                spots = spots,
+                onBack = { showHistoryMap = false }
+            )
         }
     }
 

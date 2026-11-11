@@ -11,8 +11,8 @@ android {
     applicationId = "com.PixelParking.app"
     minSdk = 26
     targetSdk = 36
-    versionCode = 67
-    versionName = "0.7"
+    versionCode = 70
+    versionName = "0.72"
   }
 
   signingConfigs {
@@ -39,12 +39,18 @@ android {
     release {
       initWith(getByName("debug"))
       isDebuggable = false
+      isJniDebuggable = false
       signingConfig = signingConfigs.getByName("debugConfig")
       isMinifyEnabled = false
     }
     debug {
       signingConfig = signingConfigs.getByName("debugConfig")
       isDebuggable = false
+      isJniDebuggable = false
+    }
+    configureEach {
+      isDebuggable = false
+      isJniDebuggable = false
     }
   }
 
@@ -94,9 +100,6 @@ val syncWearReleaseApkToRoot = tasks.register("syncWearReleaseApkToRoot") {
     )
     val src = candidates.firstOrNull { it.exists() && it.length() > 0 }
     if (src != null) {
-      val dest = file("${rootDir}/wear-release.apk")
-      src.copyTo(dest, overwrite = true)
-      dest.setReadable(true, false)
       val buildOutputsDir = file("${rootDir}/.build-outputs")
       if (buildOutputsDir.exists()) {
         val destOut = file("${rootDir}/.build-outputs/wear-release.apk")
@@ -115,9 +118,6 @@ val syncWearDebugApkToRoot = tasks.register("syncWearDebugApkToRoot") {
     )
     val src = candidates.firstOrNull { it.exists() && it.length() > 0 }
     if (src != null) {
-      val dest = file("${rootDir}/wear-debug.apk")
-      src.copyTo(dest, overwrite = true)
-      dest.setReadable(true, false)
       val buildOutputsDir = file("${rootDir}/.build-outputs")
       if (buildOutputsDir.exists()) {
         val destOut = file("${rootDir}/.build-outputs/wear-debug.apk")

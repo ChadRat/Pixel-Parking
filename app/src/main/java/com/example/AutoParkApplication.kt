@@ -100,12 +100,14 @@ class AutoParkApplication : Application() {
             if (!systemBonded.isNullOrEmpty()) {
                 val existing = repository.getAllDevicesDirect()
                 val existingMap = existing.associateBy { it.address.uppercase() }
-                val hasAnyMonitored = existing.any { it.isMonitoredCar }
-
                 systemBonded.forEach { dev ->
                     val found = existingMap[dev.address.uppercase()]
+                    val isCar = BluetoothDeviceHelper.isCarDevice(dev.name, dev.deviceType) ||
+                            (dev.originalName.isNotBlank() && BluetoothDeviceHelper.isCarDevice(dev.originalName, dev.deviceType))
+                    val isNonCar = BluetoothDeviceHelper.isNonCarDevice(dev.name) ||
+                            (dev.originalName.isNotBlank() && BluetoothDeviceHelper.isNonCarDevice(dev.originalName))
+
                     if (found == null) {
-                        val isCar = !hasAnyMonitored && (dev.deviceType == "Car" || BluetoothDisconnectReceiver.hasVehicleKeywords(dev.name) || systemBonded.size == 1)
                         repository.registerBluetoothDevice(
                             dev.copy(
                                 originalName = dev.name,
@@ -113,6 +115,8 @@ class AutoParkApplication : Application() {
                             ),
                             setAsPrimary = isCar
                         )
+                    } else if (isCar && !found.isMonitoredCar) {
+                        repository.updateBluetoothDevice(found.copy(isMonitoredCar = true, deviceType = "Car Audio / Infotainment"))
                     }
                 }
             }
@@ -123,6 +127,8 @@ class AutoParkApplication : Application() {
                 BluetoothDeviceHelper.isDeviceConnected(this@AutoParkApplication, dev.address)
             } ?: if (monitored.isEmpty()) {
                 repository.getAllDevicesDirect().firstOrNull { dev ->
+                    (BluetoothDeviceHelper.isCarDevice(dev.name, dev.deviceType) ||
+                     (dev.originalName.isNotBlank() && BluetoothDeviceHelper.isCarDevice(dev.originalName, dev.deviceType))) &&
                     BluetoothDeviceHelper.isDeviceConnected(this@AutoParkApplication, dev.address)
                 }
             } else null
@@ -138,5 +144,20 @@ class AutoParkApplication : Application() {
         } catch (e: Throwable) {
             Log.e("AutoParkApp", "Error syncing paired vehicles on startup", e)
         }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_UI_HIDDEN || level in TRIM_MEMORY_RUNNING_MODERATE..TRIM_MEMORY_RUNNING_CRITICAL) {
+            com.example.ui.screens.MapTileEngine.clearMemoryCache()
+            com.example.ui.screens.HighZoomVectorEngine.trimMemory(keepAll = false)
+        }
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        com.example.ui.screens.MapTileEngine.clearMemoryCache()
+        com.example.ui.screens.HighZoomVectorEngine.trimMemory(keepAll = false)
     }
 }
